@@ -10,7 +10,7 @@ class T(TipoviTokena):
     PICK, PUT = "pick", "put"  # pick up, put down
 
     class NAME(Token):
-        #TODO: Ako ne postoji varijabla u lokalnoj memoriji, mozda je u globalnoj
+        # TODO: Ako ne postoji varijabla u lokalnoj memoriji, mozda je u globalnoj
         def value(self, mem, unutar): return mem[self]
 
         def typeCheck(self, symtab): return symtab[self].tip
@@ -46,15 +46,26 @@ class T(TipoviTokena):
 
         def typeCheck(self, symtab): return T.BOOL
 
-    # forward(50)
+    # Number forward(Number cm) ide u naprijed za cm centimetara
+    # Povratna vrijednost je broj centimetara za koje je otisao naprijed
+    # (da znamo koliko je otisao naprijed ako ne moze ici za zadani broj)
     class FORWARD(Token):
         literal = "forward"
 
         def value(self, mem, unutar): return mem[self]
 
-    # turn(90)
+    # Number turn(Number radians) okrece se u smjeru suprotnom od kazaljki na satu za radians radijana
+    # Povratna vrijednost je broj radijana za koliko se okrenuo
+    # (da znamo koliko se okrenuo ako se ne moze okrenuti za zadani broj)
     class TURN(Token):
         literal = "turn"
+
+        def value(self, mem, unutar): return mem[self]
+
+    # Bool check(Number cm) provjeri vidi li zapreku u narednih cm centimetara
+    # Povratna vrijednost označava postoji li zapreka
+    class CHECK(Token):
+        literal = "check"
 
         def value(self, mem, unutar): return mem[self]
 
@@ -97,7 +108,7 @@ def lexer(lex):
             lex.zvijezda(Fidentifikator)
             yield lex.literal(T.NAME)
         elif znak.isdecimal():
-            lex.prirodni_broj(znak) #TODO: Dodati decimalne brojeve ako stignemo
+            lex.prirodni_broj(znak)  # TODO: Dodati decimalne brojeve ako stignemo
             yield lex.token(T.NUM)
         else:
             yield lex.literal(T)
@@ -122,29 +133,31 @@ def lexer(lex):
 # logStart -> logStart OR disjunkt | disjunkt
 # disjunkt -> disjunkt AND konjunk | konjunk
 # konjunk -> logiz | NOT konjunk
-# logiz -> aritm usporedba aritm | TRUE | FALSE | UNKNOWN | NAME (poziv)? | OPEN logStart CLOSE |
-#          OPEN BOOL CLOSE NAME (poziv)? -- eksplicitne pretvorbe
+# logiz -> aritm usporedba aritm | TRUE | FALSE | UNKNOWN | NAME poziv? | OPEN logStart CLOSE |
+#          OPEN BOOL CLOSE NAME poziv? -- eksplicitne pretvorbe
 # usporedba -> NE | LE | GE | EE | LT | GT
 
-# list -> OLIST CLIST | OLIST dargumenti CLIST | NAME (poziv)? | OPEN LIST CLOSE NAME --
+# list -> OLIST dargumenti? CLIST | NAME poziv? | OPEN LIST CLOSE NAME --
 
 # aritm -> aritm PLUS član | aritm MINUS član | član
 # član -> član TIMES faktor | član DIV faktor | faktor
-# faktor -> broj | broj EXP faktor
-# broj -> NUM | MINUS broj | broj (PP | MM)? | OPEN aritm CLOSE | NAME (poziv)? | OPEN NUM CLOSE NAME --
+# faktor -> baza | baza EXP faktor | MINUS faktor
+# baza -> NUM | baza | OPEN aritm CLOSE | NAME poziv? | OPEN NUM CLOSE NAME poziv? --
 
 # poziv -> OPEN argumenti? CLOSE
 # argumenti -> argument | argument COMMA argumenti
 # dargumenti -> argument | COMMA | argument COMMA argumenti -- dangling comma
-# argument -> aritm |! logStart |! list  [KONTEKST!]
+# argument -> aritm |! logStart |! list  [KONTEKST!] kod poziva funkcija
 # type -> NUMBER, BOOL, LIST
 
 operatoriUsporedbe = {T.EE, T.NE, T.LE, T.LT, T.GE, T.GT}
 
+
+# TODO: paziti na povratne vrijednosti funkcija i raisat error ako ne pasu, nisam to do sad radio
 class P(Parser):
     def program(self):
         self.funkcije = Memorija(redefinicija=False)
-        self.symtab = Memorija() #memorija za varijable
+        self.symtab = Memorija()  # globalna memorija za varijable
         self.funkcije["forward"] = Funkcija([T.NUMBER, "forward", [T.NUMBER, "centimeters"]])
         self.funkcije["turn"] = Funkcija([T.NUMBER, "turn", [T.NUMBER, "radians"]])
         naredbe = funkcije = []
@@ -163,7 +176,8 @@ class P(Parser):
         naredbe = self.blok()
         return Funkcija(*atributi, naredbe)
 
-    def tipIme(self): return [self >> {T.NUMBER, T.BOOL, T.LIST}, self >> T.NAME]
+    def tipIme(self):
+        return [self >> {T.NUMBER, T.BOOL, T.LIST}, self >> T.NAME]
 
     def parametri(self):
         self >> T.OPEN
@@ -174,18 +188,22 @@ class P(Parser):
         return param
 
     def naredba(self):
-        if self > T.IF: return self.grananje()
-        elif self > T.WHILE: return self.whilePetlja()
-        elif self > T.FOR: return self.forPetlja()
-        elif self >= T.RETURN: return Vrati(self.tipa(self.tipf))
-        elif tipVarijable := self >= {T.NUMBER, T.BOOL, T.LIST}: #inicijalizacija
+        if self > T.IF:
+            return self.grananje()
+        elif self > T.WHILE:
+            return self.whilePetlja()
+        elif self > T.FOR:
+            return self.forPetlja()
+        elif self >= T.RETURN:
+            return Vrati(self.tipa(self.tipf))
+        elif tipVarijable := self >= {T.NUMBER, T.BOOL, T.LIST}:  # inicijalizacija
             ime = self >> T.NAME
             if self.symtab[ime]: raise SintaksnaGreška("Varijabla se ne može dva puta inicijalizirati")
             self >> T.EQ
             pridruzivanje = Pridruzivanje(tipVarijable, ime, self.tipa(tipVarijable))
             self.symtab[ime] = pridruzivanje
             return pridruzivanje
-        else: #azuriranje, AST je isti, ali sintaksa je drugacija
+        else:  # azuriranje, AST je isti, ali sintaksa je drugacija
             ime = self >> T.NAME
             if self >= T.EQ:
                 varijabla = self.symtab[ime]
@@ -272,18 +290,17 @@ class P(Parser):
         return LogickiIzraz(izraz, brNeg)
 
     def logIzraz(self):
-        if log := self >= {T.TRUE, T.FALSE, T.UNKNOWN, T.NAME}: return self.mozda_poziv(log)
+        if log := self >= {T.TRUE, T.FALSE, T.UNKNOWN, T.NAME}:
+            return self.mozda_poziv(log)
         elif self >= T.OPEN:
             if self >= T.BOOL:
                 self >> T.CLOSE
-                mozda = self.mozda_poziv(self >> T.NAME, True)
-                return mozda
-            else:
-                #TODO: OPEN logStart CLOSE, al treba >>
-                if not self > {T.TRUE, T.FALSE, T.UNKNOWN, T.NAME, T.OPEN}:
-                    SemantičkaGreška("Nakon otvorene zagrade mora doći eksplicitna pretvorba ili logički izraz")
-                logStart = self.logStart()
-                return logStart
+                return self.mozda_poziv(self >> T.NAME, True)
+            if not self > {T.TRUE, T.FALSE, T.UNKNOWN, T.NAME, T.OPEN}:
+                SemantičkaGreška("Nakon otvorene zagrade mora doći eksplicitna pretvorba ili logički izraz")
+            logStart = self.logStart()
+            self >> T.CLOSE
+            return logStart
         return Usporedba(self.aritm(), self >> operatoriUsporedbe, self.aritm())
 
     def mozda_poziv(self, ime, force=False):
@@ -294,50 +311,63 @@ class P(Parser):
             return Poziv(nenavedeno, self.argumenti(self.parametrif))
         elif ime in self.symtab:
             return self.symtab[ime]
-        elif force: raise SintaksnaGreška("Kriva eksplicitna pretvorba")
+        elif force:
+            raise SintaksnaGreška("Kriva eksplicitna pretvorba")
         else:
             return ime
 
     def argumenti(self, parametri):
         arg = []
-        self >> T.OTV
+        self >> T.OPEN
         for i, parametar in enumerate(parametri):
-            if i: self >> T.ZAREZ
+            if i: self >> T.COMMA
             arg.append(self.tipa(parametar))
-        self >> T.ZATV
+        self >> T.CLOSE
         return arg
 
     def aritm(self):
-        članovi = [self.član()]
-        while True:
-            if self >= T.PLUS:
-                članovi.append(self.član())
-            elif self >= T.MINUS:
-                članovi.append(Suprotan(self.član()))
-            else:
-                return Zbroj.ili_samo(članovi)
+        t = self.clan()
+        while op := self >= {T.PLUS, T.MINUS}: t = Binarna(op, t, self.clan())
+        return t
 
-    def član(self):
-        faktori = [self.faktor()]
-        while self >= T.ZVJEZDICA: faktori.append(self.faktor())
-        return Umnožak.ili_samo(faktori)
+    def clan(self):
+        t = self.faktor()
+        while op := self >= {T.TIMES, T.DIV}: t = Binarna(op, t, self.faktor())
+        return t
 
     def faktor(self):
-        if self >= T.MINUS:
-            return Suprotan(self.faktor())
-        elif aritm := self >= T.AIME:
-            return self.mozda_poziv(aritm)
-        elif self >= T.OTV:
-            u_zagradi = self.aritm()
-            self >> T.ZATV
-            return u_zagradi
+        if op := self >= T.MINUS: return Unarna(op, self.faktor())
+        baza = self.baza()
+        if op := self >= T.EXP:
+            return Binarna(op, baza, self.faktor())
         else:
-            return self >> T.BROJ
+            return baza
+
+    def baza(self):
+        if self >= T.OPEN:
+            if self >= T.BOOL:
+                self >> T.CLOSE
+                return self.mozda_poziv(self >> T.NAME, True)
+            trenutni = self.aritm()
+            self >> T.CLOSE
+        else:
+            trenutni = self >> {T.NUMBER, T.NAME}
+        return self.mozda_poziv(trenutni)
+
+    # TODO: dovrsiti ovo
+    def list(self):
+        if self >= T.OLIST:
+            if self >= T.CLIST: return Lista([])
+
+    def dargumenti(self):
+        arg = []
 
     start = program
     lexer = lexer
 
+
 def negacija(log): return -log
+
 
 ### AST
 # Program: funkcije[funkcija] naredbe:[naredba]
@@ -354,3 +384,34 @@ def negacija(log): return -log
 #               Suprotan: od:aritm
 #               Umnožak: faktori:[aritm]
 #        Poziv: funkcija:Funkcija argumenti:[izraz]
+
+
+class Binarna(AST('op lijevo desno')):
+    def vrijednost(self, env):
+        o, x, y = self.op, self.lijevo.vrijednost(env), self.desno.vrijednost(env)
+        try:
+            if o ^ T.PLUS:
+                return x + y
+            elif o ^ T.MINUS:
+                return x - y
+            elif o ^ T.PUTA:
+                return x * y
+            elif o ^ T.KROZ:
+                return x / y
+            elif o ^ T.NA:
+                return x ** y
+            else:
+                assert False, f'nepokriveni slučaj binarnog operatora {o}'
+        except ArithmeticError as ex:
+            raise o.iznimka(ex)
+
+
+class Unarna(AST('op ispod')):
+    def vrijednost(self, env):
+        o, z = self.op, self.ispod.vrijednost(env)
+        if o ^ T.MINUS:
+            return -z
+        elif o ^ T.KONJ:
+            return z.conjugate()
+        else:
+            assert False, f'nepokriveni slučaj unarnog operatora {o}'
