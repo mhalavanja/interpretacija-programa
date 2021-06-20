@@ -3,7 +3,7 @@ from vepar import *
 
 class T(TipoviTokena):
     OPEN, CLOSE, COMMA, SEMICOL, OLIST, CLIST, LT, GT, EQ, PLUS, MINUS, TIMES, DIV, EXP, OPENBR, CLOSEBR = "(),;[]<>=+-*/^{}"
-    NE, LE, GE, PP, MM, EE, PE = "!=", "<=", ">=", "++", "--", "==", "+="
+    NE, LE, GE, PP, EE, PE = "!=", "<=", ">=", "++", "==", "+="
     IF, ELIF, ELSE, FOR, WHILE, RETURN, DEF = 'if', "elif", 'else', "for", 'while', 'return', "def"
     NOT, AND, OR = 'not', 'and', 'or'
     NUMBER, BOOL, LIST = "Number", "Bool", "List"
@@ -92,7 +92,7 @@ def lexer(lex):
         elif znak == '!':
             lex >> '='
             yield lex.token(T.NE)
-        elif znak == '/':
+        elif znak == '/':   #višelinijski komentari koji ako ne završe komentiraju do kraja
             if lex >= "*":
                 while True:
                     lex.pročitaj_do("*", više_redova=True)
@@ -101,7 +101,7 @@ def lexer(lex):
                         break
             else:
                 yield lex.token(T.DIV)
-        elif znak == '#':
+        elif znak == '#':   #jednolinijski komentari
             lex.pročitaj_do('\n')
             lex.zanemari()
         elif znak.isalpha():
@@ -137,7 +137,7 @@ def lexer(lex):
 #          OPEN BOOL CLOSE NAME poziv? -- eksplicitne pretvorbe
 # usporedba -> NE | LE | GE | EE | LT | GT
 
-# list -> OLIST dargumenti? CLIST | NAME poziv? | OPEN LIST CLOSE NAME --
+# list -> OLIST (listArgument | list)? CLIST | NAME poziv? | OPEN LIST CLOSE NAME poziv?--
 
 # aritm -> aritm PLUS član | aritm MINUS član | član
 # član -> član TIMES faktor | član DIV faktor | faktor
@@ -146,8 +146,8 @@ def lexer(lex):
 
 # poziv -> OPEN argumenti? CLOSE
 # argumenti -> argument | argument COMMA argumenti
-# dargumenti -> argument | COMMA | argument COMMA argumenti -- dangling comma
 # argument -> aritm |! logStart |! list  [KONTEKST!] kod poziva funkcija
+# listArgument -> list | NUM | TRUE | FALSE | UNKNOWN
 # type -> NUMBER, BOOL, LIST
 
 operatoriUsporedbe = {T.EE, T.NE, T.LE, T.LT, T.GE, T.GT}
@@ -157,22 +157,27 @@ operatoriUsporedbe = {T.EE, T.NE, T.LE, T.LT, T.GE, T.GT}
 class P(Parser):
     def program(self):
         self.funkcije = Memorija(redefinicija=False)
-        self.symtab = Memorija()  # globalna memorija za varijable
+        # self.symtab = Memorija()  # globalna memorija za varijable
         self.funkcije["forward"] = Funkcija([T.NUMBER, "forward", [T.NUMBER, "centimeters"]])
         self.funkcije["turn"] = Funkcija([T.NUMBER, "turn", [T.NUMBER, "radians"]])
+        self.funkcije["check"] = Funkcija([T.BOOL, "check", [T.NUMBER, "centimeters"]])
         naredbe = funkcije = []
+        #TODO: napraviti da funkcije ne moraju biti samo na pocetku koda
         while self > T.DEF:
             funkcija = self.funkcija()
             funkcije.append(funkcija.ime)
             self.funkcije[funkcija.ime] = funkcija
-        while not self > KRAJ:
-            naredbe.append(self.naredba())
-            self >> {T.SEMICOL, KRAJ}
-        return Program(funkcije, naredbe, self.funkcije, self.symtab)
 
+        # while not self > KRAJ:
+        #     naredbe.append(self.naredba())
+        #     self >> {T.SEMICOL, KRAJ} #TODO: Mislim da ovo ne treba zbog petlji i if
+        # return Program(funkcije, naredbe, self.funkcije, self.symtab)
+        return Program(self.funkcije)
+    
     def funkcija(self):
         self >> T.DEF
         atributi = self.tipf, self.imef, self.parametrif = self.tipIme(), self.parametri()
+        self.symtabf = Memorija() #lokalna memorija svake fje za pacenje tipova varijable
         naredbe = self.blok()
         return Funkcija(*atributi, naredbe)
 
@@ -198,18 +203,18 @@ class P(Parser):
             return Vrati(self.tipa(self.tipf))
         elif tipVarijable := self >= {T.NUMBER, T.BOOL, T.LIST}:  # inicijalizacija
             ime = self >> T.NAME
-            if self.symtab[ime]: raise SintaksnaGreška("Varijabla se ne može dva puta inicijalizirati")
+            if self.symtabf[ime]: raise SemantičkaGreška("Varijabla se ne može dva puta inicijalizirati")
             self >> T.EQ
-            pridruzivanje = Pridruzivanje(tipVarijable, ime, self.tipa(tipVarijable))
-            self.symtab[ime] = pridruzivanje
+            pridruzivanje = Pridruzivanje(tipVarijable, ime, self.tipa(tipVarijable)) #ovo rijesava i funkcijske pozive
+            self.symtabf[ime] = pridruzivanje
             return pridruzivanje
         else:  # azuriranje, AST je isti, ali sintaksa je drugacija
             ime = self >> T.NAME
             if self >= T.EQ:
-                varijabla = self.symtab[ime]
-                if not varijabla: raise SintaksnaGreška("Varijabla se ne može ažurirati prije inicijalizacije")
+                varijabla = self.symtabf[ime]
+                if not varijabla: raise SemantičkaGreška("Varijabla se ne može ažurirati prije inicijalizacije")
                 azuriranje = Azuriranje(varijabla.tip, ime, self.tipa(varijabla.tip))
-                self.symtab[ime] = azuriranje
+                self.symtabf[ime] = azuriranje
                 return azuriranje
 
     def tipa(self, tip):
@@ -224,27 +229,27 @@ class P(Parser):
 
     def grananje(self):
         elifNaredbe = elseNaredbe = []
-        elifUvijet = Nenavedeno
+        elifUvjet = Nenavedeno
         self >> T.IF
         self >> T.OPEN
-        ifUvijet = self.logStart()
+        ifUvjet = self.logStart()
         self >> T.CLOSE
         ifNaredbe = self.blok()
         if self >= T.ELIF:
             self >> T.OPEN
-            elifUvijet = self.logStart()
+            elifUvjet = self.logStart()
             self >> T.CLOSE
             elifNaredbe = self.blok()
         if self >= T.ELSE: elseNaredbe = self.blok()
-        return Grananje(ifUvijet, ifNaredbe, elifUvijet, elifNaredbe, elseNaredbe)
+        return Grananje(ifUvjet, ifNaredbe, elifUvjet, elifNaredbe, elseNaredbe)
 
     def whilePetlja(self):
         self >> T.WHILE
         self >> T.OPEN
-        logUvijet = self.logStart()
+        logUvjet = self.logStart()
         self >> T.CLOSE
         naredbe = self.blok()
-        return WhilePetlja(logUvijet, naredbe)
+        return WhilePetlja(logUvjet, naredbe)
 
     def forPetlja(self):
         self >> T.FOR
@@ -253,7 +258,7 @@ class P(Parser):
         self >> T.SEMICOL
         if not self >> T.NAME == i: raise SintaksnaGreška("Ime varijable u for petlji mora biti isto")
         stopUsporedba = self >> operatoriUsporedbe
-        stopVarijabla = T.NUMBER  # TODO: moze biti i varijabla ili poziv funkcije
+        stopVarijabla = self >> T.NUMBER  # TODO: moze biti i varijabla ili poziv funkcije ili aritm
         self >> T.SEMICOL
         if not self >> T.NAME == i: raise SintaksnaGreška("Ime varijable u for petlji mora biti isto")
         if self >= T.PP:
@@ -295,7 +300,7 @@ class P(Parser):
         elif self >= T.OPEN:
             if self >= T.BOOL:
                 self >> T.CLOSE
-                return self.mozda_poziv(self >> T.NAME, True)
+                return self.mozda_poziv(self >> T.NAME, True) #TODO: Dodati ostale stvari ako stignemo
             if not self > {T.TRUE, T.FALSE, T.UNKNOWN, T.NAME, T.OPEN}:
                 SemantičkaGreška("Nakon otvorene zagrade mora doći eksplicitna pretvorba ili logički izraz")
             logStart = self.logStart()
@@ -309,8 +314,8 @@ class P(Parser):
             return Poziv(funkcija, self.argumenti(funkcija.parametri))
         elif ime == self.imef:
             return Poziv(nenavedeno, self.argumenti(self.parametrif))
-        elif ime in self.symtab:
-            return self.symtab[ime]
+        elif ime in self.symtabf:
+            return self.symtabf[ime]
         elif force:
             raise SintaksnaGreška("Kriva eksplicitna pretvorba")
         else:
@@ -354,13 +359,22 @@ class P(Parser):
             trenutni = self >> {T.NUMBER, T.NAME}
         return self.mozda_poziv(trenutni)
 
-    # TODO: dovrsiti ovo
+    # List mojaLista = [[1,2,3],[[true], 1, 2], 3]
     def list(self):
-        if self >= T.OLIST:
-            if self >= T.CLIST: return Lista([])
+        if self >= T.OPEN:
+            self >> T.LIST
+            self >> T.CLOSE
+            return self.mozda_poziv(self >> T.NAME, True)
+        if name := self >= T.NAME: return self.mozda_poziv(name)
+        self >> T.OLIST
+        argumenti = [self.listArgument()]
+        while self >= T.COMMA: argumenti.append(self.listArgument())
+        self >> T.CLIST
+        return Lista(argumenti)
 
-    def dargumenti(self):
-        arg = []
+    def listArgument(self):
+        if self > T.OLIST: return [self.list()]
+        elif name := self >> {T.NAME, T.NUM, T. TRUE, T.FALSE, T.UNKNOWN}: return self.mozda_poziv(name)
 
     start = program
     lexer = lexer
