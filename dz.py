@@ -11,12 +11,12 @@ class T(TipoviTokena):
 
     class NAME(Token):
         # TODO: Ako ne postoji varijabla u lokalnoj memoriji, mozda je u globalnoj
-        def value(self, mem, unutar): return mem[self]
+        def vrijednost(self, mem, unutar): return mem[self]
 
         def typeCheck(self, mem): return mem[self].tip
 
     class NUM(Token):
-        def value(self, mem, unutar): return int(self.sadržaj)
+        def vrijednost(self, mem, unutar): return int(self.sadržaj)
 
         def typeCheck(self, mem): return T.NUMBERTYPE
 
@@ -28,21 +28,21 @@ class T(TipoviTokena):
     class TRUE(Token):
         literal = 'True'
 
-        def value(self, mem, unutar): return 1
+        def vrijednost(self, mem, unutar): return 1
 
         def typeCheck(self, mem): return T.BOOLTYPE
 
     class FALSE(Token):
         literal = 'False'
 
-        def value(self, mem, unutar): return -1
+        def vrijednost(self, mem, unutar): return -1
 
         def typeCheck(self, mem): return T.BOOLTYPE
 
     class UNKNOWN(Token):
         literal = 'Unknown'
 
-        def value(self, mem, unutar): return 0
+        def vrijednost(self, mem, unutar): return 0
 
         def typeCheck(self, mem): return T.BOOLTYPE
 
@@ -73,7 +73,7 @@ class T(TipoviTokena):
 class Break(NelokalnaKontrolaToka):
     """Signal koji šalje naredba break."""
 
-#TODO: dodati <=, => u lexer
+
 def lexer(lex):
     for znak in lex:
         if znak.isspace():
@@ -92,6 +92,10 @@ def lexer(lex):
         elif znak == '!':
             lex >> '='
             yield lex.token(T.NE)
+        elif znak == '>':
+            yield lex.token(T.GE if lex >= '=' else T.GT)
+        elif znak == '<':
+            yield lex.token(T.LE if lex >= '=' else T.LT)
         elif znak == '/':  # višelinijski komentari koji ako ne završe komentiraju do kraja
             if lex >= "*":
                 while True:
@@ -178,8 +182,8 @@ class P(Parser):
         self >> T.DEF
         [self.tipf, self.imef], self.parametrif = self.tipIme(), self.parametri()
         # u symtab spremamo tipove lokalnih varijabli pa ih provjeravamo za vrijeme parsiranja
-        naredbe = self.blok()
-        return Funkcija(self.tipf, self.imef, self.parametrif, naredbe)
+        blok = self.blok()
+        return Funkcija(self.tipf, self.imef, self.parametrif, blok, self.symtab)
 
     def tipIme(self):
         return self >> {T.NUMBERTYPE, T.BOOLTYPE, T.LISTTYPE}, self >> T.NAME
@@ -210,14 +214,18 @@ class P(Parser):
             ime = self >> T.NAME
             if ime in self.symtab: raise SemantičkaGreška("Varijabla se ne može dva puta inicijalizirati")
             self >> T.EQ
-            self.symtab[ime] = tipVarijable
-            return Pridruzivanje(tipVarijable, ime, self.tipa(tipVarijable))
+            # self.symtab[ime] = tipVarijable
+            # return Pridruzivanje(tipVarijable, ime, self.tipa(tipVarijable))
+            #TODO: mislim da ne treba proslijedivat tip varijabli
+            return Pridruzivanje(ime, self.tipa(tipVarijable))
         else:  # azuriranje
             ime = self >> T.NAME
             if self >= T.EQ:
+                if ime not in self.symtab: raise SemantičkaGreška("Varijabla se ne može ažurirati prije inicijalizacije")
                 tipVarijable = self.symtab[ime]
-                if not tipVarijable: raise SemantičkaGreška("Varijabla se ne može ažurirati prije inicijalizacije")
-                return Azuriranje(tipVarijable.tip, ime, self.tipa(tipVarijable))
+                # return Azuriranje(tipVarijable.tip, ime, self.tipa(tipVarijable))
+                #TODO: mislim da ne treba proslijedivat tip varijabli
+                return Azuriranje(ime, self.tipa(tipVarijable))
 
     def tipa(self, tip):
         if tip ^ T.NUMBERTYPE:
@@ -230,8 +238,8 @@ class P(Parser):
             assert False, f'Nepoznat tip {tip}'
 
     def grananje(self):
-        elifNaredbe = elseNaredbe = []
-        elifUvjet = Nenavedeno
+        elifNaredbe = elseNaredbe = Blok([])
+        elifUvjet = False
         self >> T.IF
         self >> T.OPEN
         ifUvjet = self.logStart()
@@ -243,6 +251,7 @@ class P(Parser):
             self >> T.CLOSE
             elifNaredbe = self.blok()
         if self >= T.ELSE: elseNaredbe = self.blok()
+        # print (ifUvjet, ifNaredbe, elifUvjet, elifNaredbe, elseNaredbe)
         return Grananje(ifUvjet, ifNaredbe, elifUvjet, elifNaredbe, elseNaredbe)
 
     def whilePetlja(self):
@@ -250,8 +259,8 @@ class P(Parser):
         self >> T.OPEN
         logUvjet = self.logStart()
         self >> T.CLOSE
-        naredbe = self.blok()
-        return WhilePetlja(logUvjet, naredbe)
+        blok = self.blok()
+        return WhilePetlja(logUvjet, blok)
 
     def forPetlja(self):
         self >> T.FOR
@@ -260,7 +269,7 @@ class P(Parser):
         self >> T.SEMICOL
         if not self >> T.NAME == i: raise SintaksnaGreška("Ime varijable u for petlji mora biti isto")
         stopUsporedba = self >> operatoriUsporedbe
-        stopVarijabla = self.aritm()
+        stopVar = self.aritm()
         self >> T.SEMICOL
         if not self >> T.NAME == i: raise SintaksnaGreška("Ime varijable u for petlji mora biti isto")
         if self >= T.PP:
@@ -269,8 +278,8 @@ class P(Parser):
             self >> T.PE
             inkrement = self >> T.NUM
         self >> T.CLOSE
-        naredbe = self.blok()
-        return ForPetlja(i, stopUsporedba, stopVarijabla, inkrement, naredbe)
+        blok = self.blok()
+        return ForPetlja(i, stopUsporedba, stopVar, inkrement, blok)
 
     def blok(self):
         self >> T.OPENBR
@@ -281,18 +290,32 @@ class P(Parser):
         return Blok.ili_samo(n)
 
     def logStart(self):
-        disjunkti = [self.disjunkcija()]
-        while self >= T.OR: disjunkti.append(self.disjunkcija())
-        return Binarna.ili_samo(disjunkti)
+        t = self.disjunkcija()
+        while op := self >= T.OR: t = Binarna(op, t, self.disjunkcija())
+        return t
 
     def disjunkcija(self):
-        konjunkti = [self.konjunkcija()]
-        while self >= T.AND: konjunkti.append(self.konjunkcija())
-        return Binarna.ili_samo(konjunkti)
+        t = self.konjunkcija()
+        while op := self >= T.AND: t = Binarna(op, t, self.konjunkcija())
+        return t
 
     def konjunkcija(self):
         while self >= T.NOT:
             return Unarna(T.NOT, self.konjunkcija())
+        return self.logIzraz()
+
+    def pretvorba(self, uTip):
+        self >> T.CLOSE
+        if self > T.OLIST:
+            varijabla = self.list()
+            tip = T.LISTTYPE
+        elif varijabla := self >= T.NUM: tip = T.NUMBERTYPE
+        elif varijabla := self >= {T.TRUE, T.UNKNOWN, T.FALSE}: tip = T.BOOLTYPE
+        else:
+            ime = self >> T.NAME
+            tip = self.symtab[ime] if ime in self.symtab else self.funkcije[ime].tip
+            varijabla = self.mozda_poziv(ime, tip , True)
+        return Pretvorba(tip, varijabla, uTip)
 
     def logIzraz(self):
         if log := self >= {T.TRUE, T.FALSE, T.UNKNOWN}:
@@ -300,9 +323,7 @@ class P(Parser):
         if name := self >= T.NAME:
             return self.mozda_poziv(name, T.BOOLTYPE)
         elif self >= T.OPEN:
-            if self >= T.BOOLTYPE:
-                self >> T.CLOSE
-                return self.mozda_poziv(self >> T.NAME, True)  # TODO: Dodati ostale stvari ako stignemo
+            if self >= T.BOOLTYPE: return self.pretvorba(T.BOOLTYPE)
             if not self > {T.TRUE, T.FALSE, T.UNKNOWN, T.NAME, T.OPEN}:
                 SemantičkaGreška("Nakon otvorene zagrade mora doći eksplicitna pretvorba ili logički izraz")
             logStart = self.logStart()
@@ -356,20 +377,21 @@ class P(Parser):
 
     def baza(self):
         if self >= T.OPEN:
-            if self >= T.BOOLTYPE:
-                self >> T.CLOSE
-                return self.mozda_poziv(self >> T.NAME, True)
-            trenutni = self.aritm()
+            if self >= T.NUMBERTYPE: return self.pretvorba(T.NUMBERTYPE)
+            if not self > {T.NUM, T.NAME, T.MINUS, T.OPEN}:
+                SemantičkaGreška("Nakon otvorene zagrade mora doći eksplicitna pretvorba ili aritmetički izraz")
+            aritm = self.aritm()
             self >> T.CLOSE
-        elif num := self >= T.NUM: return num
-        return self.mozda_poziv(self >> T.NAME, T.NUM)
+            return aritm
+        elif num := self >= T.NUM:
+            return num
+        #TODO: ovo mozda ne radi jer pise NUMBERTYPE umijesto NUM, al mislim da bi zapravo ovako trebalo biti
+        return self.mozda_poziv(self >> T.NAME, T.NUMBERTYPE)
 
     # List mojaLista = [[1,2,3],[[true], 1, 2], 3]
     def list(self):
         if self >= T.OPEN:
-            self >> T.LISTTYPE
-            self >> T.CLOSE
-            return self.mozda_poziv(self >> T.NAME, True)
+            if self >> T.LISTTYPE: return self.pretvorba(T.LISTTYPE)
         if name := self >= T.NAME: return self.mozda_poziv(name, T.LISTTYPE)
         self >> T.OLIST
         argumenti = [self.listArgument()]
@@ -389,7 +411,7 @@ class P(Parser):
 
 
 def izvrsi(funkcije, *argv):
-    print('Program je vratio:', funkcije['program'].pozovi(argv))
+    print('Program je vratio:', funkcije['main'].pozovi(argv))
 
 
 def numBoolToToken(num):
@@ -402,6 +424,8 @@ def numBoolToToken(num):
     else:
         assert False, f"{num} nije vrijednost nikoje instance Bool tipa"
 
+
+# TODO: Dodati AST za eksplicitnu pretvorbu
 
 ### AST
 # Program: funkcije[funkcija] #(za sad nema ovog: naredbe:[naredba])
@@ -419,17 +443,17 @@ def numBoolToToken(num):
 #        Unarna: op:(aritm:MINUS)|(log:NOT) ispod:izraz
 #        Poziv: funkcija:Funkcija argumenti:[izraz]
 
-class Funkcija(AST('povratniTip ime parametri naredbe symtab')):
+class Funkcija(AST('povratniTip ime parametri blok symtab')):
     def pozovi(self, argumenti):
         symtab = Memorija(dict(self.symtab))
         lokalni = Memorija(dict(zip(self.parametri, argumenti)))
-        for naredba in self.naredbe:
-            try:
-                naredba.izvrsi(symtab, lokalni, self)
-            except Povratak as exc:
-                return exc.preneseno
-            # else:
-            #     raise GreškaIzvođenja(f'{self.ime} nije ništa vratila')
+        try:
+            self.blok.izvrsi(symtab, lokalni, self)
+        except Povratak as exc:
+            return exc.preneseno
+        else:
+            raise GreškaIzvođenja(f'{self.ime} nije ništa vratila')
+
 
 class Poziv(AST('funkcija argumenti')):
     def vrijednost(self, mem, unutar):
@@ -438,17 +462,18 @@ class Poziv(AST('funkcija argumenti')):
         argumenti = [a.vrijednost(mem, unutar) for a in self.argumenti]
         return pozvana.pozovi(argumenti)
 
-class Grananje(AST('istinitost uvjet onda inače')):
-    def izvrsi(self, symtab, mem, unutar):
-        if ispunjen(self, mem, unutar):
-            self.onda.izvrsi(mem, unutar, )
+    def _asdict(self):  # samo za ispis, da se ne ispiše čitava funkcija
+        za_ispis = {'argumenti': self.argumenti}
+        if self.funkcija is nenavedeno:
+            za_ispis['*rekurzivni'] = True
         else:
-            self.inače.izvrsi(mem, unutar, )
+            za_ispis['*ime'] = self.funkcija.ime
+        return za_ispis
 
 
 class Binarna(AST('op lijevo desno')):
     def vrijednost(self, env):
-        o,x,y = self.op, self.lijevo.vrijednost(env), self.desno.vrijednost(env)
+        o, x, y = self.op, self.lijevo.vrijednost(env), self.desno.vrijednost(env)
         try:
             if o ^ T.PLUS:
                 return x + y
@@ -480,45 +505,118 @@ class Unarna(AST('op ispod')):
         else:
             assert False, f'nepokriveni slučaj unarnog operatora {o}'
 
-    def _asdict(self):  # samo za ispis, da se ne ispiše čitava funkcija
-        za_ispis = {'argumenti': self.argumenti}
-        if self.funkcija is nenavedeno: za_ispis['*rekurzivni'] = True
-        else: za_ispis['*ime'] = self.funkcija.ime
-        return za_ispis
 
 def ispunjen(ast, mem, unutar):
-    trazeno = {T.JE: True, T.NIJE: False}[ast.istinitost.tip]
+    trazeno = [ast.ifUvjet.tip]
     return ast.uvjet.vrijednost(mem, unutar) == trazeno
 
 
-class Petlja(AST('istinitost uvjet tijelo')):
+class Grananje(
+    AST("ifUvjet ifNaredbe elifUvjet elifNaredbe elseNaredbe")):  # Grananje(AST('istinitost uvjet onda inače')):
     def izvrsi(self, symtab, mem, unutar):
-        while ispunjen(self, mem, unutar): self.tijelo.izvrsi(mem, unutar, )
+        if self.ifUvjet.vrijednost(mem, unutar):
+            self.ifNaredbe.izvrsi(symtab, mem, unutar)
+        elif self.elifUvjet.vrijednost(mem, unutar) != Nenavedeno:
+            self.elifNaredbe.izvrsi(symtab, mem, unutar)
+        else:
+            self.elseNaredbe.izvrsi(symtab, mem, unutar)
 
+
+class WhilePetlja(AST("logUvjet blok")):
+    def izvrsi(self, symtab, mem, unutar):
+        while self.logUvijet.vrijednost(self, mem, unutar): self.blok.izvrsi(self, symtab, mem, unutar)
+
+class ForPetlja(AST("i stopUsporedba stopVar inkrement blok")):
+    def izvrsi(self, symtab, mem, unutar):
+        i = self.i.vrijednost(mem, unutar)
+        stopVar = self.stopVar.vrijednost(mem, unutar)
+        while(usporedi(i, self.stopUsporedba, stopVar)):
+            self.blok.izvrsi(self, symtab, mem, unutar)
+            i += self.inkrement
+            mem[i] = i
+
+
+def usporedi(l, relacija, d):
+    if relacija ^ T.EQ:
+        return l == d
+    elif relacija ^ T.NE:
+        return l != d
+    elif relacija ^ T.LT:
+        return l < d
+    elif relacija ^ T.LE:
+        return l <= d
+    elif relacija ^ T.GT:
+        return l > d
+    elif relacija ^ T.GE:
+        return l >= d
+    else:
+        assert False, f'Nepoznata relacija {relacija}'
 
 class Usporedba(AST('lijevo relacija desno')):
     def vrijednost(self, mem, unutar):
         l = self.lijevo.vrijednost(mem, unutar)
         d = self.desno.vrijednost(mem, unutar)
-        if self.relacija ^ T.JEDNAKO: return l == d
-        elif self.relacija ^ T.MANJE: return l < d
-        else: assert False, f'Nepoznata relacija {self.relacija}'
+        usporedi(l, self.relacija, d)
 
 
-class Pridruzivanje(AST('varijabla tip vrijednost')):
+class Pridruzivanje(AST('ime pridruzeno')):
     def izvrsi(self, symtab, mem, unutar):
-        lijevo = symtab[self.varijabla]
-        desno = self.vrijednost.provjeri_tip(symtab)
-        if not desno <= lijevo:
-            raise self.varijabla.krivi_tip(lijevo, desno)
-        mem[self.ime] = self.pridruženo.vrijednost(mem, unutar)
+        # TODO: Mislim da svu provjeru tipova vec imamo obavljenu u parseru
+
+        # lijevo = symtab[self.varijabla]
+        # desno = self.vrijednost.provjeri_tip(symtab)
+        # if not desno <= lijevo:
+        #     raise self.varijabla.krivi_tip(lijevo, desno)
+        mem[self.ime] = self.pridruzeno.vrijednost(mem, unutar)
+
+class Azuriranje(AST("tipVar ime izraz")):
+    def izvrsi(self, symtab, mem, unutar):
+        mem[self.ime] = self.pridruzeno.vrijednost(mem, unutar)
+
+class Lista(AST("argumenti")):
+    def vrijednost(self, mem, unutar):
+        return [arg.vrijednost(mem, unutar) for arg in self.argumenti]
+
+class Pretvorba(AST("kojiTip var uTip")):
+    def vrijednost(self, mem, unutar):
+        kojiTip = self.kojiTip
+        var = self.var.vrijednost(mem, unutar)
+        uTip = self.uTip
+        vrijednost = var.vrijednost()
+        if kojiTip == T.LISTTYPE:
+            if uTip == T.LISTTYPE:
+                return vrijednost
+            if uTip == T.NUMBERTYPE:
+                return len(vrijednost)
+            if uTip == T.BOOLTYPE:
+                return len(vrijednost) != 0
+        if kojiTip == T.NUMBERTYPE:
+            if uTip == T.NUMBERTYPE:
+                return vrijednost
+            if uTip == T.BOOLTYPE:
+                return vrijednost != 0
+            if uTip == T.LISTTYPE:
+                return [vrijednost]
+        if kojiTip == T.BOOLTYPE:
+            if uTip == T.BOOLTYPE:
+                return vrijednost
+            if uTip == T.NUMBERTYPE:
+                return vrijednost
+            if uTip == T.LISTTYPE:
+                return [vrijednost]
 
 class Blok(AST('naredbe')):
     def izvrsi(self, symtab, mem, unutar):
-        for naredba in self.naredbe: naredba.izvrsi(mem, unutar, )
+        for naredba in self.naredbe: naredba.izvrsi(symtab, mem, unutar)
 
-class Vrati(AST('što')):
+
+class Vrati(AST('sto')):
     def izvrsi(self, symtab, mem, unutar):
-        raise Povratak(self.što.vrijednost(mem, unutar))
+        raise Povratak(self.sto.vrijednost(mem, unutar))
+
 
 class Povratak(NelokalnaKontrolaToka): """Signal koji šalje naredba vrati."""
+
+proba = P('def Number main () { if (True){ return 1;} else {return 2;}}')
+prikaz(proba, 5)
+izvrsi(proba)
