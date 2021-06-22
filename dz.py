@@ -194,9 +194,7 @@ class P(Parser):
         if self >= T.CLOSE: return []
         tip, ime = self.tipIme()
         param = [(tip, ime)]
-        # print(tip, ime)
         self.symtab[ime] = tip
-        # print(self.symtab[ime])
         while self >= T.COMMA:
             tip, ime = self.tipIme()
             self.symtab[ime] = tip
@@ -364,14 +362,8 @@ class P(Parser):
     def argumenti(self, parametri):
         arg = []
         self >> T.OPEN
-        # print("AAAAAA")
-        # for i, parametar in self.symtab:
-            # print("symtab:")
-            # print (i, parametar)
         for i, parametar in enumerate(parametri):
             if i: self >> T.COMMA
-            # print(i, parametar[1])
-            # print(i, parametar[1] in self.symtab)
             arg.append(self.tipa(self.symtab[parametar[1]]))
         self >> T.CLOSE
         return arg
@@ -404,7 +396,7 @@ class P(Parser):
             return aritm
         elif num := self >= T.NUM:
             return num
-        #TODO: ovo mozda ne radi jer pise NUMBERTYPE umijesto NUM, al mislim da bi zapravo ovako trebalo biti
+        # TODO: ovo mozda ne radi jer pise NUMBERTYPE umijesto NUM, al mislim da bi zapravo ovako trebalo biti
         return self.mozda_poziv(self >> T.NAME, T.NUMBERTYPE)
 
     # List mojaLista = [[1,2,3],[[true], 1, 2], 3]
@@ -462,7 +454,7 @@ def numBoolToToken(num):
 #        Unarna: op:(aritm:MINUS)|(log:NOT) ispod:izraz
 #        Poziv: funkcija:Funkcija argumenti:[izraz]
 
-#TODO: Parametri se salje kao tuple tako da kod prikaza ASTa imamo tip i ime varijable
+# TODO: Parametri se salje kao tuple tako da kod prikaza ASTa imamo tip i ime varijable
 class Funkcija(AST('povratniTip ime parametri blok symtab')):
     def pozovi(self, argumenti):
         parametriImena = []
@@ -529,11 +521,6 @@ class Unarna(AST('op ispod')):
             assert False, f'nepokriveni slučaj unarnog operatora {o}'
 
 
-def ispunjen(ast, mem, unutar):
-    trazeno = [ast.ifUvjet.tip]
-    return ast.uvjet.vrijednost(mem, unutar) == trazeno
-
-
 class Grananje(
     AST("ifUvjet ifNaredbe elifUvjet elifNaredbe elseNaredbe")):  # Grananje(AST('istinitost uvjet onda inače')):
     def izvrsi(self, symtab, mem, unutar):
@@ -581,7 +568,7 @@ class Usporedba(AST('lijevo relacija desno')):
     def vrijednost(self, mem, unutar):
         l = self.lijevo.vrijednost(mem, unutar)
         d = self.desno.vrijednost(mem, unutar)
-        usporedi(l, self.relacija, d)
+        return usporedi(l, self.relacija, d)
 
 
 class Pridruzivanje(AST('ime pridruzeno')):
@@ -597,7 +584,7 @@ class Pridruzivanje(AST('ime pridruzeno')):
 
 class Azuriranje(AST("ime izraz")):
     def izvrsi(self, symtab, mem, unutar):
-        mem[self.ime] = self.pridruzeno.vrijednost(mem, unutar)
+        mem[self.ime] = self.izraz.vrijednost(mem, unutar)
 
 
 class Lista(AST("argumenti")):
@@ -647,24 +634,24 @@ class Vrati(AST('sto')):
 class Povratak(NelokalnaKontrolaToka): """Signal koji šalje naredba vrati."""
 
 
-proba = P('def Number main () {Number c = 1; if (c == 1){ return 1;} else {return 2;}}')
-prikaz(proba, 5)
-izvrsi(proba)
+# proba = P('def Number main () {Number c = 1; if (c == 1){ return 1;} else {return 2;}}')
+# prikaz(proba, 5)
+# izvrsi(proba)
 
-#TODO: u funkciji argumenti rijesiti da se mogu pozivati funkcije s proizvoljnim imenom
+# TODO: u funkciji argumenti rijesiti da se mogu pozivati funkcije s proizvoljnim imenom
 
-proba2 = P('''\
-def Number zbroj (Number n, Number m) {return n+m;}
-def Number main () {Number n = 1; Number m = 2; return zbroj(n, m);}
-''')
-prikaz(proba2, 5)
-izvrsi(proba2)
-
-#TODO: rekurzivni pozivi ne rade za sad
-
-# rekurzivna = P('''\
-#     def Number fakt(Number n) {if (n == 1){ return 1;} else {n = n-1; return (n+1)*fakt(n);}}
-#     def Number main(){return fakt(1);}
+# proba2 = P('''\
+# def Number zbroj (Number n, Number m) {return n+m;}
+# def Number main () {Number n = 1; Number m = 2; return zbroj(n, m);}
 # ''')
-# prikaz(rekurzivna)
-# izvrsi(rekurzivna)
+# prikaz(proba2, 5)
+# izvrsi(proba2)
+
+# TODO: rekurzivni pozivi ne rade za sad
+
+rekurzivna = P('''\
+    def Number fakt(Number n) {if (n == 1){ return 1;} else {n = n-1; return (n+1)*fakt(n);}}
+    def Number main(){Number n = 5; return fakt(n);}
+''')
+prikaz(rekurzivna)
+izvrsi(rekurzivna)
