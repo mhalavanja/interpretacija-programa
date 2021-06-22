@@ -1,6 +1,5 @@
-""""""""""""""""""""""""""""""""""""""""""""""""""""""
 n = 5
-test= ['#######', '#**█**#', '#**↑**#', '#***█*#', '#######']
+test = ['#######', '#**█**#', '#**↑**#', '#***█*#', '#######']
 mapa = res = [list(sub) for sub in test]
 smjer = 'gore'
 smjerovi = ['gore', 'lijevo', 'dolje', 'desno']
@@ -10,16 +9,14 @@ senzor = 3
 ikone = ['↑', '←', '↓', '→']
 kutije = ['▲', '◄', '▼', '►']
 kutija = '█'
-print (*mapa, sep = '\n')
+# print (*mapa, sep = '\n')
 
-#TODO: je li nam problem to sto su ove varijable globalne ako zelimo
-""""""""""""
-
-
-
-
+# TODO: je li nam problem to sto su ove varijable globalne ako zelimo
 from vepar import *
 
+# Ovo je odnos izmedu Token() i .tip,inace pada
+# Token(T.NESTO) -> NESTO'Nesto'
+# (NESTO'Nesto').tip -> T.NESTO
 
 class T(TipoviTokena):
     OPEN, CLOSE, COMMA, SEMICOL, OLIST, CLIST, LT, GT, EQ, PLUS, MINUS, TIMES, DIV, EXP, OPENBR, CLOSEBR = "(),;[]<>=+-*/^{}"
@@ -27,7 +24,8 @@ class T(TipoviTokena):
     IF, ELIF, ELSE, FOR, WHILE, RETURN, DEF = 'if', "elif", 'else', "for", 'while', 'return', "def"
     NOT, AND, OR = 'not', 'and', 'or'
     NUMBERTYPE, BOOLTYPE, LISTTYPE = "Number", "Bool", "List"
-    #PICK, PUT = "pick", "put"  # pick up, put down
+
+    # PICK, PUT = "pick", "put"  # pick up, put down
 
     class NAME(Token):
         # TODO: Ako ne postoji varijabla u lokalnoj memoriji, mozda je u globalnoj
@@ -86,16 +84,16 @@ class T(TipoviTokena):
         literal = "check"
 
         def vrijednost(self, mem, unutar): return mem[self]
-    
+
     class PICK(Token):
-        literal = "pick" #pick up objekt koji je pickupable :)
+        literal = "pick"  # pick up objekt koji je pickupable :)
 
         def vrijednost(self, mem, unutar): return mem[self]
 
     class PUT(Token):
-        literal = "put" #put down objekt koji robot drzi
+        literal = "put"  # put down objekt koji robot drzi
 
-        def  vrijednost(self, mem, unutar): return mem[self]
+        def vrijednost(self, mem, unutar): return mem[self]
 
 
 class Break(NelokalnaKontrolaToka):
@@ -144,7 +142,7 @@ def lexer(lex):
             yield lex.token(T.NUM)
         else:
             yield lex.literal(T)
-   
+
 
 ### (B)KG
 # start -> funkcija start | program
@@ -199,21 +197,21 @@ class P(Parser):
         # self.funkcije["forward"] = Funkcija([T.NUMBERTYPE, "forward", [T.NUMBERTYPE, "centimeters"]])
         # self.funkcije["turn"] = Funkcija([T.NUMBERTYPE, "turn", [T.NUMBERTYPE, "radians"]])
         # self.funkcije["check"] = Funkcija([T.BOOLTYPE, "check", [T.NUMBERTYPE, "centimeters"]])
-        
+
         naredbe = funkcije = []
 
         # TODO: napraviti da funkcije ne moraju biti samo na pocetku koda, ako budemo imali naredbe jos
-        
+
         while self > T.DEF:
             funkcija = self.funkcija()
             funkcije.append(funkcija.ime)
             self.funkcije[funkcija.ime] = funkcija
 
         while not self > KRAJ:
-             naredbe.append(self.naredba())
-             self >> {T.SEMICOL, KRAJ} #TODO: Mislim da ovo ne treba zbog petlji i if
+            naredbe.append(self.naredba())
+            self >> {T.SEMICOL, KRAJ}  # TODO: Mislim da ovo ne treba zbog petlji i if
         return self.funkcije
-        #return Program(funkcije, naredbe, self.funkcije, self.symtab)
+        # return Program(funkcije, naredbe, self.funkcije, self.symtab)
 
     def funkcija(self):
         self.symtab = Memorija(redefinicija=False)
@@ -393,14 +391,9 @@ class P(Parser):
             tip = T.BOOLTYPE
         else:
             ime = self >> T.NAME
-            tip = self.symtab[ime] #if ime in self.symtab  else self.funkcije[ime].tip
-            # print(tip)
-            # print(tip.tip)
+            tip = self.symtab[ime].tip  # if ime in self.symtab  else self.funkcije[ime].tip
             varijabla = self.mozda_poziv(ime, tip, True)
-        # print(tip)
-        # print(varijabla)
-        # print(uTip)
-        return Pretvorba(tip, varijabla, uTip)
+        return Pretvorba(Token(tip), varijabla, Token(uTip))
 
     def logIzraz(self):
         if log := self >= {T.TRUE, T.FALSE, T.UNKNOWN}:
@@ -410,11 +403,11 @@ class P(Parser):
             if (name in self.symtab and self.symtab[name] == Token(T.BOOLTYPE)) or (
                     name in self.funkcije and self.funkcije[name].tip == T.BOOLTYPE) or (
                     name == self.imef and self.tipf == T.BOOLTYPE):
-                return self.mozda_poziv(name, Token(T.BOOLTYPE))
+                return self.mozda_poziv(name, T.BOOLTYPE)
             else:
                 self.vrati()
         elif self >= T.OPEN:
-            if self >= T.BOOLTYPE: return self.pretvorba(Token(T.BOOLTYPE))
+            if self >= T.BOOLTYPE: return self.pretvorba(T.BOOLTYPE)
             if not self > {T.TRUE, T.FALSE, T.UNKNOWN, T.NAME, T.OPEN}:
                 SemantičkaGreška("Nakon otvorene zagrade mora doći eksplicitna pretvorba ili logički izraz")
             logStart = self.logStart()
@@ -426,19 +419,20 @@ class P(Parser):
     def mozda_poziv(self, ime, ocekivaniTip, force=False):
         if ime in self.funkcije:
             funkcija = self.funkcije[ime]
-            if funkcija.povratniTip != ocekivaniTip: raise SemantičkaGreška(
+            if not(funkcija.povratniTip ^ ocekivaniTip): raise SemantičkaGreška(
                 f"Povratni tip funkcije {ime} nije očekivanog tipa {ocekivaniTip}")
             return Poziv(funkcija, self.argumenti(funkcija.parametri))
         elif ime == self.imef:
             return Poziv(nenavedeno, self.argumenti(self.parametrif))
         elif ime in self.symtab:
-            ocekivaniTip = ocekivaniTip
             # print(self.symtab[ime])
             # print(self.symtab[ime].tip)
             # print(ocekivaniTip)
-            if self.symtab[ime] != ocekivaniTip: raise SemantičkaGreška(
-                f"Tip varijable {ime} je tipa {self.symtab[ime]} nije očekivanog tipa {ocekivaniTip}")
-            else: return ime
+            if not(self.symtab[ime].tip == ocekivaniTip):
+                raise SemantičkaGreška(
+                    f"Tip varijable {ime} je tipa {self.symtab[ime].tip} nije očekivanog tipa {ocekivaniTip}")
+            else:
+                return ime
         elif force:
             raise SintaksnaGreška("Kriva eksplicitna pretvorba")
         else:
@@ -474,7 +468,7 @@ class P(Parser):
 
     def baza(self):
         if self >= T.OPEN:
-            if self >= T.NUMBERTYPE: return self.pretvorba(Token(T.NUMBERTYPE))
+            if self >= T.NUMBERTYPE: return self.pretvorba(T.NUMBERTYPE)
             if not self > {T.NUM, T.NAME, T.MINUS, T.OPEN}:
                 SemantičkaGreška("Nakon otvorene zagrade mora doći eksplicitna pretvorba ili aritmetički izraz")
             aritm = self.aritm()
@@ -483,13 +477,13 @@ class P(Parser):
         elif num := self >= T.NUM:
             return num
         # TODO: ovo mozda ne radi jer pise NUMBERTYPE umijesto NUM, al mislim da bi zapravo ovako trebalo biti
-        return self.mozda_poziv(self >> T.NAME, Token(T.NUMBERTYPE))
+        return self.mozda_poziv(self >> {T.NAME, T.FORWARD}, T.NUMBERTYPE)
 
     # List mojaLista = [[1,2,3],[[true], 1, 2], 3]
     def list(self):
         if self >= T.OPEN:
-            if self >> T.LISTTYPE: return self.pretvorba(Token(T.LISTTYPE))
-        if name := self >= T.NAME: return self.mozda_poziv(name, Token(T.LISTTYPE))
+            if self >> T.LISTTYPE: return self.pretvorba(T.LISTTYPE)
+        if name := self >= T.NAME: return self.mozda_poziv(name, T.LISTTYPE)
         self >> T.OLIST
         argumenti = [self.listArgument()]
         while self >= T.COMMA: argumenti.append(self.listArgument())
@@ -501,7 +495,7 @@ class P(Parser):
             return [self.list()]
         elif name := self >> {T.NUM, T.TRUE, T.FALSE, T.UNKNOWN}:
             return name
-        return self.mozda_poziv(self >> T.NAME, Token(T.LISTTYPE))
+        return self.mozda_poziv(self >> T.NAME, T.LISTTYPE)
 
     start = program
     lexer = lexer
@@ -637,6 +631,7 @@ class ForPetlja(AST("i stopUsporedba stopVar inkrement blok")):
             i += self.inkrement
             mem[i] = i
 
+
 class Pomak(AST('pomak')):
     def izvrsi(self, symtab, mem, unutar):
         global pozx, pozy, smjer, mapa, smjerovi
@@ -647,12 +642,12 @@ class Pomak(AST('pomak')):
             while mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] == '*' and n < int(self.pomak.vrijednost(mem, unutar)):
                 pozx += (smjerovi.index(smjer)) - 1
                 n += 1
-            mapa[pozx][pozy] = (ikone[smjerovi.index (smjer)] if jeli_ikona else kutije[smjerovi.index (smjer)])
+            mapa[pozx][pozy] = (ikone[smjerovi.index(smjer)] if jeli_ikona else kutije[smjerovi.index(smjer)])
         elif smjer in {'lijevo', 'desno'}:
             while mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] == '*' and n < int(self.pomak.vrijednost(mem, unutar)):
                 pozy += (smjerovi.index(smjer)) - 2
                 n += 1
-            mapa[pozx][pozy] = (ikone[smjerovi.index (smjer)] if jeli_ikona else kutije[smjerovi.index (smjer)])
+            mapa[pozx][pozy] = (ikone[smjerovi.index(smjer)] if jeli_ikona else kutije[smjerovi.index(smjer)])
         else:
             raise GreškaIzvođenja(f'Smjer {smjer} nije valjan.')
         return n
@@ -661,81 +656,84 @@ class Pomak(AST('pomak')):
 class Okretaj(AST('kut')):
     def izvrsi(self, symtab, mem, unutar):
         global pozx, pozy, smjer, mapa, smjerovi
-        if (self.kut.vrijednost (mem, unutar) % 90):
-            raise GreškaIzvođenja(f'Kut {self.kut.vrijednost (mem, unutar)} nije višekratnik 90.')
-        
+        if (self.kut.vrijednost(mem, unutar) % 90):
+            raise GreškaIzvođenja(f'Kut {self.kut.vrijednost(mem, unutar)} nije višekratnik 90.')
+
         global pozx, pozy, smjer, mapa, smjerovi
-        kut = self.kut.vrijednost (mem, unutar) // 90
+        kut = self.kut.vrijednost(mem, unutar) // 90
         smjer = smjerovi[(smjerovi.index(smjer) + kut) % 4]
         if mapa[pozx][pozy] in ikone:
-            mapa[pozx][pozy] = ikone[smjerovi.index (smjer)]
+            mapa[pozx][pozy] = ikone[smjerovi.index(smjer)]
         elif mapa[pozx][pozy] in kutije:
-            mapa[pozx][pozy] = kutije[smjerovi.index (smjer)]
+            mapa[pozx][pozy] = kutije[smjerovi.index(smjer)]
 
-        #ovde ne triba nista vracat jer ce past na GreskaIzvodenja ako nije visekratnik 90 svakako
+        # ovde ne triba nista vracat jer ce past na GreskaIzvodenja ako nije visekratnik 90 svakako
+
 
 class Provjera(AST('udaljenost')):
     def izvrsi(self, symtab, mem, unutar):
         if self.udaljenost.vrijednost(mem, unutar) == 0:
-            print ("true")
+            print("true")
             return T.TRUE
         global pozx, pozy, smjer, mapa, smjerovi, senzor
-        #ovdje sam globalno (varijabla senzor) definirao udaljenost do koje njegovi senzori rade
+        # ovdje sam globalno (varijabla senzor) definirao udaljenost do koje njegovi senzori rade
         x, y, n = pozx, pozy, 0
         if smjer in {'gore', 'dolje'}:
             while mapa[x + (smjerovi.index(smjer)) - 1][y] == '*' and n < int(self.udaljenost.vrijednost(mem, unutar)):
                 x += (smjerovi.index(smjer)) - 1
                 if (n == senzor):
-                    print ("unknown")
+                    print("unknown")
                     return T.UNKNOWN
                 n += 1
         elif smjer in {'lijevo', 'desno'}:
             while mapa[x][y + (smjerovi.index(smjer)) - 2] == '*' and n < int(self.udaljenost.vrijednost(mem, unutar)):
                 y += (smjerovi.index(smjer)) - 2
-                #print (x, y, n)
-                #print (self.udaljenost.vrijednost(mem,unutar), x, y, n)
+                # print (x, y, n)
+                # print (self.udaljenost.vrijednost(mem,unutar), x, y, n)
                 if (n == senzor):
-                    print ("unknown")
+                    print("unknown")
                     return T.UNKNOWN
                 n += 1
         else:
-            #ovo je stavljeno zbog nas, korisnik ne moze pristupati globalnoj varijabli smjer
+            # ovo je stavljeno zbog nas, korisnik ne moze pristupati globalnoj varijabli smjer
             raise GreškaIzvođenja(f'Smjer {smjer} nije valjan.')
-        #print (n)
-        #print (mapa[x][y], mapa[x][y + 1])
-        if n >= self.udaljenost.vrijednost (mem, unutar):
-            print ("true")
+        # print (n)
+        # print (mapa[x][y], mapa[x][y + 1])
+        if n >= self.udaljenost.vrijednost(mem, unutar):
+            print("true")
             return T.TRUE
         if n == senzor:
-            print ("unknown")
-            return T.UNKNOWN        
+            print("unknown")
+            return T.UNKNOWN
         else:
-            print ("false")
+            print("false")
             return T.FALSE
+
 
 class Dizanje(AST('')):
     def izvrsi(self, symtab, mem, unutar):
         global pozx, pozy, smjer, mapa, smjerovi, kutija, kutije
         if smjer in {'gore', 'dolje'}:
-                if mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] == kutija and mapa[pozx][pozy] not in kutije:
-                    mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] = '*'
-                    mapa[pozx][pozy] = kutije[smjerovi.index (smjer)]
+            if mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] == kutija and mapa[pozx][pozy] not in kutije:
+                mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] = '*'
+                mapa[pozx][pozy] = kutije[smjerovi.index(smjer)]
         elif smjer in {'lijevo', 'desno'}:
             if mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] == kutija and mapa[pozx][pozy] not in kutije:
                 mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] = '*'
-                mapa[pozx][pozy] = kutije[smjerovi.index (smjer)]
+                mapa[pozx][pozy] = kutije[smjerovi.index(smjer)]
 
-class Spustanje(AST('')): 
+
+class Spustanje(AST('')):
     def izvrsi(self, symtab, mem, unutar):
         global pozx, pozy, smjer, mapa, smjerovi, kutija, kutije
         if smjer in {'gore', 'dolje'}:
             if mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] == '*' and mapa[pozx][pozy] in kutije:
                 mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] = kutija
-                mapa[pozx][pozy] = ikone[smjerovi.index (smjer)]
+                mapa[pozx][pozy] = ikone[smjerovi.index(smjer)]
         elif smjer in {'lijevo', 'desno'}:
             if mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] == '*' and mapa[pozx][pozy] in kutije:
                 mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] = kutija
-                mapa[pozx][pozy] = ikone[smjerovi.index (smjer)]
+                mapa[pozx][pozy] = ikone[smjerovi.index(smjer)]
 
 
 def usporedi(l, relacija, d):
@@ -786,30 +784,33 @@ class Lista(AST("argumenti")):
 class Pretvorba(AST("kojiTip var uTip")):
     def vrijednost(self, mem, unutar):
         kojiTip = self.kojiTip
-        var = self.var.vrijednost(mem, unutar)
+        var = self.var
         uTip = self.uTip
+        # print(kojiTip)
         # print(var)
-        vrijednost = var.vrijednost()
-        if kojiTip == T.LISTTYPE:
-            if uTip == T.LISTTYPE:
+        # print(uTip)
+        vrijednost = var.vrijednost(mem, unutar)
+        if kojiTip ^ T.LISTTYPE:
+            if uTip ^ T.LISTTYPE:
                 return vrijednost
-            if uTip == T.NUMBERTYPE:
+            if uTip ^ T.NUMBERTYPE:
                 return len(vrijednost)
-            if uTip == T.BOOLTYPE:
+            if uTip ^ T.BOOLTYPE:
                 return len(vrijednost) != 0
-        if kojiTip == T.NUMBERTYPE:
-            if uTip == T.NUMBERTYPE:
+        if kojiTip ^ T.NUMBERTYPE:
+            if uTip ^ T.NUMBERTYPE:
                 return vrijednost
-            if uTip == T.BOOLTYPE:
-                return vrijednost != 0
-            if uTip == T.LISTTYPE:
+            if uTip ^ T.BOOLTYPE:
+                if vrijednost in {-1,0}: return vrijednost
+                else: return 1
+            if uTip ^ T.LISTTYPE:
                 return [vrijednost]
-        if kojiTip == T.BOOLTYPE:
-            if uTip == T.BOOLTYPE:
+        if kojiTip ^ T.BOOLTYPE:
+            if uTip ^ T.BOOLTYPE:
                 return vrijednost
-            if uTip == T.NUMBERTYPE:
+            if uTip ^ T.NUMBERTYPE:
                 return vrijednost
-            if uTip == T.LISTTYPE:
+            if uTip ^ T.LISTTYPE:
                 return [vrijednost]
 
 
@@ -830,14 +831,14 @@ class Povratak(NelokalnaKontrolaToka): """Signal koji šalje naredba vrati."""
 # prikaz(proba, 5)
 # izvrsi(proba)
 
-#TODO: u funkciji argumenti rijesiti da se mogu pozivati funkcije s proizvoljnim imenom
+# TODO: u funkciji argumenti rijesiti da se mogu pozivati funkcije s proizvoljnim imenom
 
 
 # proba2 = P('''\
 # def Number zbroj (Number n, Number m) {return n+m;}
 # def Number main () {Number n = 1; Number d = 2; return zbroj(n, d);}
 # ''')
-# prikaz(proba2, 5)
+# prikaz(proba2)
 # izvrsi(proba2)
 
 # proba3 = P('''\
@@ -855,13 +856,16 @@ class Povratak(NelokalnaKontrolaToka): """Signal koji šalje naredba vrati."""
 # izvrsi(proba2)
 
 # pretvorba = P('''\
-# def Bool main () {Number n = 1; Bool m = (Bool) n; return m;}
+# def Bool f () {Number n = 0; Bool m = (Bool) n; return m;}
+# #def Bool main(){Bool x = f(); return x;}
+# #def Bool main(){Bool x = Unknown; if(x == Unknown){return True;}else{return False;}}
+# def Bool main(){Bool x = False; return x;}
 # ''')
-# prikaz(pretvorba, 5)
+# prikaz(pretvorba)
 # izvrsi(pretvorba)
 
 # TODO: rekurzivni pozivi ne rade za sad
-"""
+
 rekurzivna = P('''\
     def Number fakt(Number n)
     {
@@ -873,20 +877,15 @@ rekurzivna = P('''\
         }
     }
     def Number main(){
-        Number a = 1;
+        Number a = 5;
         #Bool c = (Bool) a;
-        Number b = 5;
-        return fakt(b);
+        forward(1);
+        return fakt(5);
         }
 ''')
-prikaz(rekurzivna)
-izvrsi(rekurzivna)
+# print(P.tokeniziraj(rekurzivna))
 # prikaz(rekurzivna)
-# izvrsi(rekurzivna)
-"""
-
-
-
+izvrsi(rekurzivna)
 
 
 '''
@@ -924,15 +923,11 @@ izvrsi(rekurzivna)
 
 ### testovi za PICK i PUT:
     def Number main () {pick (); turn (270); pick (); put (); pick (); forward (1);turn (270); pick ();  put (); turn (90); put (); turn (270);pick ();turn (90); put (); turn (90); pick (); put (); turn (270); pick (); put (); turn (180); forward (1); forward (100);return 0;}
-
-
-
-
 '''
 
-prikaz(proba3)
-print ('')
-#print (smjer)
-izvrsi(proba3)
-#print (smjer)
-print (*mapa, sep = '\n')
+# prikaz(proba3)
+# print ('')
+# print (smjer)
+# izvrsi(proba3)
+# print (smjer)
+# print (*mapa, sep = '\n')
