@@ -13,8 +13,6 @@ class T(TipoviTokena):
         # TODO: Ako ne postoji varijabla u lokalnoj memoriji, mozda je u globalnoj
         def vrijednost(self, mem, unutar): return mem[self]
 
-        def typeCheck(self, mem): return mem[self].tip
-
     class NUM(Token):
         def vrijednost(self, mem, unutar): return int(self.sadržaj)
 
@@ -52,7 +50,7 @@ class T(TipoviTokena):
     class FORWARD(Token):
         literal = "forward"
 
-        def value(self, mem, unutar): return mem[self]
+        def vrijednost(self, mem, unutar): return mem[self]
 
     # Number turn(Number radians) okrece se u smjeru suprotnom od kazaljki na satu za radians radijana
     # Povratna vrijednost je broj radijana za koliko se okrenuo
@@ -60,14 +58,14 @@ class T(TipoviTokena):
     class TURN(Token):
         literal = "turn"
 
-        def value(self, mem, unutar): return mem[self]
+        def vrijednost(self, mem, unutar): return mem[self]
 
     # Bool check(Number cm) provjeri vidi li zapreku u narednih cm centimetara
     # Povratna vrijednost označava postoji li zapreka
     class CHECK(Token):
         literal = "check"
 
-        def value(self, mem, unutar): return mem[self]
+        def vrijednost(self, mem, unutar): return mem[self]
 
 
 class Break(NelokalnaKontrolaToka):
@@ -317,8 +315,13 @@ class P(Parser):
             tip = T.BOOLTYPE
         else:
             ime = self >> T.NAME
-            tip = self.symtab[ime] if ime in self.symtab else self.funkcije[ime].tip
+            tip = self.symtab[ime] #if ime in self.symtab  else self.funkcije[ime].tip
+            # print(tip)
+            # print(tip.tip)
             varijabla = self.mozda_poziv(ime, tip, True)
+        # print(tip)
+        # print(varijabla)
+        # print(uTip)
         return Pretvorba(tip, varijabla, uTip)
 
     def logIzraz(self):
@@ -326,14 +329,14 @@ class P(Parser):
             return log
         if self > T.NAME:
             name = self >= T.NAME
-            if (name in self.symtab and self.symtab[name].tip == T.BOOLTYPE) or (
+            if (name in self.symtab and self.symtab[name] == Token(T.BOOLTYPE)) or (
                     name in self.funkcije and self.funkcije[name].tip == T.BOOLTYPE) or (
                     name == self.imef and self.tipf == T.BOOLTYPE):
-                return self.mozda_poziv(name, T.BOOLTYPE)
+                return self.mozda_poziv(name, Token(T.BOOLTYPE))
             else:
                 self.vrati()
         elif self >= T.OPEN:
-            if self >= T.BOOLTYPE: return self.pretvorba(T.BOOLTYPE)
+            if self >= T.BOOLTYPE: return self.pretvorba(Token(T.BOOLTYPE))
             if not self > {T.TRUE, T.FALSE, T.UNKNOWN, T.NAME, T.OPEN}:
                 SemantičkaGreška("Nakon otvorene zagrade mora doći eksplicitna pretvorba ili logički izraz")
             logStart = self.logStart()
@@ -345,15 +348,19 @@ class P(Parser):
     def mozda_poziv(self, ime, ocekivaniTip, force=False):
         if ime in self.funkcije:
             funkcija = self.funkcije[ime]
-            if funkcija.povratniTip != Token(ocekivaniTip): raise SemantičkaGreška(
+            if funkcija.povratniTip != ocekivaniTip: raise SemantičkaGreška(
                 f"Povratni tip funkcije {ime} nije očekivanog tipa {ocekivaniTip}")
             return Poziv(funkcija, self.argumenti(funkcija.parametri))
         elif ime == self.imef:
             return Poziv(nenavedeno, self.argumenti(self.parametrif))
-        # elif ime in self.symtab:
-        #     if self.symtab[ime].tip != ocekivaniTip: raise SemantičkaGreška(
-        #         f"Tip varijable {ime} nije očekivanog tipa {ocekivaniTip}")
-        #     return self.symtab[ime]
+        elif ime in self.symtab:
+            ocekivaniTip = ocekivaniTip
+            # print(self.symtab[ime])
+            # print(self.symtab[ime].tip)
+            # print(ocekivaniTip)
+            if self.symtab[ime] != ocekivaniTip: raise SemantičkaGreška(
+                f"Tip varijable {ime} je tipa {self.symtab[ime]} nije očekivanog tipa {ocekivaniTip}")
+            else: return ime
         elif force:
             raise SintaksnaGreška("Kriva eksplicitna pretvorba")
         else:
@@ -362,9 +369,10 @@ class P(Parser):
     def argumenti(self, parametri):
         arg = []
         self >> T.OPEN
-        for i, parametar in enumerate(parametri):
+        for i in range(len(parametri)):
+            [tip, _] = parametri[i]
             if i: self >> T.COMMA
-            arg.append(self.tipa(self.symtab[parametar[1]]))
+            arg.append(self.tipa(tip))
         self >> T.CLOSE
         return arg
 
@@ -388,7 +396,7 @@ class P(Parser):
 
     def baza(self):
         if self >= T.OPEN:
-            if self >= T.NUMBERTYPE: return self.pretvorba(T.NUMBERTYPE)
+            if self >= T.NUMBERTYPE: return self.pretvorba(Token(T.NUMBERTYPE))
             if not self > {T.NUM, T.NAME, T.MINUS, T.OPEN}:
                 SemantičkaGreška("Nakon otvorene zagrade mora doći eksplicitna pretvorba ili aritmetički izraz")
             aritm = self.aritm()
@@ -397,13 +405,13 @@ class P(Parser):
         elif num := self >= T.NUM:
             return num
         # TODO: ovo mozda ne radi jer pise NUMBERTYPE umijesto NUM, al mislim da bi zapravo ovako trebalo biti
-        return self.mozda_poziv(self >> T.NAME, T.NUMBERTYPE)
+        return self.mozda_poziv(self >> T.NAME, Token(T.NUMBERTYPE))
 
     # List mojaLista = [[1,2,3],[[true], 1, 2], 3]
     def list(self):
         if self >= T.OPEN:
-            if self >> T.LISTTYPE: return self.pretvorba(T.LISTTYPE)
-        if name := self >= T.NAME: return self.mozda_poziv(name, T.LISTTYPE)
+            if self >> T.LISTTYPE: return self.pretvorba(Token(T.LISTTYPE))
+        if name := self >= T.NAME: return self.mozda_poziv(name, Token(T.LISTTYPE))
         self >> T.OLIST
         argumenti = [self.listArgument()]
         while self >= T.COMMA: argumenti.append(self.listArgument())
@@ -415,7 +423,7 @@ class P(Parser):
             return [self.list()]
         elif name := self >> {T.NUM, T.TRUE, T.FALSE, T.UNKNOWN}:
             return name
-        return self.mozda_poziv(self >> T.NAME, T.LISTTYPE)
+        return self.mozda_poziv(self >> T.NAME, Token(T.LISTTYPE))
 
     start = program
     lexer = lexer
@@ -597,6 +605,7 @@ class Pretvorba(AST("kojiTip var uTip")):
         kojiTip = self.kojiTip
         var = self.var.vrijednost(mem, unutar)
         uTip = self.uTip
+        # print(var)
         vrijednost = var.vrijednost()
         if kojiTip == T.LISTTYPE:
             if uTip == T.LISTTYPE:
@@ -647,11 +656,30 @@ class Povratak(NelokalnaKontrolaToka): """Signal koji šalje naredba vrati."""
 # prikaz(proba2, 5)
 # izvrsi(proba2)
 
+# pretvorba = P('''\
+# def Bool main () {Number n = 1; Bool m = (Bool) n; return m;}
+# ''')
+# prikaz(pretvorba, 5)
+# izvrsi(pretvorba)
+
 # TODO: rekurzivni pozivi ne rade za sad
 
 rekurzivna = P('''\
-    def Number fakt(Number n) {if (n == 1){ return 1;} else {n = n-1; return (n+1)*fakt(n);}}
-    def Number main(){Number n = 5; return fakt(n);}
+    def Number fakt(Number n)
+    {
+        if (n == 1){return 1;}
+        elif (n == 0){return 1;}
+        else {
+            Number a = n-1;
+            return (a+1)*fakt(a);
+        }
+    }
+    def Number main(){
+        Number a = 1;
+        #Bool c = (Bool) a;
+        Number b = 5;
+        return fakt(b);
+        }
 ''')
 prikaz(rekurzivna)
 izvrsi(rekurzivna)
