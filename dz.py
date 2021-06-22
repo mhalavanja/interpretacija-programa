@@ -1,3 +1,23 @@
+""""""""""""""""""""""""""""""""""""""""""""""""""""""
+n = 5
+test= ['#######', '#**█**#', '#**↑**#', '#***█*#', '#######']
+mapa = res = [list(sub) for sub in test]
+smjer = 'gore'
+smjerovi = ['gore', 'lijevo', 'dolje', 'desno']
+pozx = 2
+pozy = 3
+senzor = 3
+ikone = ['↑', '←', '↓', '→']
+kutije = ['▲', '◄', '▼', '►']
+kutija = '█'
+print (*mapa, sep = '\n')
+
+#TODO: je li nam problem to sto su ove varijable globalne ako zelimo
+""""""""""""
+
+
+
+
 from vepar import *
 
 
@@ -7,7 +27,7 @@ class T(TipoviTokena):
     IF, ELIF, ELSE, FOR, WHILE, RETURN, DEF = 'if', "elif", 'else', "for", 'while', 'return', "def"
     NOT, AND, OR = 'not', 'and', 'or'
     NUMBERTYPE, BOOLTYPE, LISTTYPE = "Number", "Bool", "List"
-    PICK, PUT = "pick", "put"  # pick up, put down
+    #PICK, PUT = "pick", "put"  # pick up, put down
 
     class NAME(Token):
         # TODO: Ako ne postoji varijabla u lokalnoj memoriji, mozda je u globalnoj
@@ -66,6 +86,16 @@ class T(TipoviTokena):
         literal = "check"
 
         def vrijednost(self, mem, unutar): return mem[self]
+    
+    class PICK(Token):
+        literal = "pick" #pick up objekt koji je pickupable :)
+
+        def vrijednost(self, mem, unutar): return mem[self]
+
+    class PUT(Token):
+        literal = "put" #put down objekt koji robot drzi
+
+        def  vrijednost(self, mem, unutar): return mem[self]
 
 
 class Break(NelokalnaKontrolaToka):
@@ -114,7 +144,7 @@ def lexer(lex):
             yield lex.token(T.NUM)
         else:
             yield lex.literal(T)
-
+   
 
 ### (B)KG
 # start -> funkcija start | program
@@ -125,6 +155,12 @@ def lexer(lex):
 # naredbe -> condNaredba naredbe? | naredba SEMICOL naredbe?
 # blok -> OPENBR naredbe CLOSEBR
 # naredba -> inicijaliziraj | azuriraj | NAME poziv | RETURN argument
+# naredba -> naprijed | okreni | provjeri | podigni | spusti
+# naprijed -> FORWARD OPEN NUM CLOSE SEMICOL
+# okreni -> TURN OPEN NUM CLOSE SEMICOL
+# provjeri -> CHECK OPEN NUM CLOSE SEMICOL
+# podigni -> PICK OPEN CLOSE SEMICOL
+# spusti -> PUT OPEN CLOSE SEMICOL
 # condNaredba -> FOR OPEN name# SEMICOL name# usporedba (NUM | NAME | NAME poziv) SEMICOL name# (PP | PE NUM) CLOSE blok
 #              | WHILE OPEN logStart CLOSE blok
 #              | IF OPEN logStart CLOSE blok (ELIF OPEN logStart CLOSE blok)* (ELSE blok)?
@@ -158,22 +194,26 @@ operatoriUsporedbe = {T.EE, T.NE, T.LE, T.LT, T.GE, T.GT}
 class P(Parser):
     def program(self):
         self.funkcije = Memorija(redefinicija=False)
+
         # self.symtab = Memorija()  # globalna memorija za varijable
         # self.funkcije["forward"] = Funkcija([T.NUMBERTYPE, "forward", [T.NUMBERTYPE, "centimeters"]])
         # self.funkcije["turn"] = Funkcija([T.NUMBERTYPE, "turn", [T.NUMBERTYPE, "radians"]])
         # self.funkcije["check"] = Funkcija([T.BOOLTYPE, "check", [T.NUMBERTYPE, "centimeters"]])
+        
         naredbe = funkcije = []
+
         # TODO: napraviti da funkcije ne moraju biti samo na pocetku koda, ako budemo imali naredbe jos
+        
         while self > T.DEF:
             funkcija = self.funkcija()
             funkcije.append(funkcija.ime)
             self.funkcije[funkcija.ime] = funkcija
 
-        # while not self > KRAJ:
-        #     naredbe.append(self.naredba())
-        #     self >> {T.SEMICOL, KRAJ} #TODO: Mislim da ovo ne treba zbog petlji i if
-        # return Program(funkcije, naredbe, self.funkcije, self.symtab)
+        while not self > KRAJ:
+             naredbe.append(self.naredba())
+             self >> {T.SEMICOL, KRAJ} #TODO: Mislim da ovo ne treba zbog petlji i if
         return self.funkcije
+        #return Program(funkcije, naredbe, self.funkcije, self.symtab)
 
     def funkcija(self):
         self.symtab = Memorija(redefinicija=False)
@@ -210,6 +250,16 @@ class P(Parser):
             return self.forPetlja()
         elif self >= T.RETURN:
             return Vrati(self.tipa(self.tipf))
+        elif self >= T.FORWARD:
+            return self.naprijed()
+        elif self >= T.TURN:
+            return self.okreni()
+        elif self >= T.CHECK:
+            return self.provjeri()
+        elif self >= T.PICK:
+            return self.podigni()
+        elif self >= T.PUT:
+            return self.spusti()
         elif tipVarijable := self >= {T.NUMBERTYPE, T.BOOLTYPE, T.LISTTYPE}:  # inicijalizacija
             ime = self >> T.NAME
             if ime in self.symtab: raise SemantičkaGreška("Varijabla se ne može dva puta inicijalizirati")
@@ -253,6 +303,34 @@ class P(Parser):
             elifNaredbe = self.blok()
         if self >= T.ELSE: elseNaredbe = self.blok()
         return Grananje(ifUvjet, ifNaredbe, elifUvjet, elifNaredbe, elseNaredbe)
+
+    def naprijed(self):
+        self >> T.OPEN
+        pomak = self >> T.NUM
+        self >> T.CLOSE
+        return Pomak(pomak)
+
+    def okreni(self):
+        self >> T.OPEN
+        kut = self >> T.NUM
+        self >> T.CLOSE
+        return Okretaj(kut)
+
+    def provjeri(self):
+        self >> T.OPEN
+        udaljenost = self >> T.NUM
+        self >> T.CLOSE
+        return Provjera(udaljenost)
+
+    def podigni(self):
+        self >> T.OPEN
+        self >> T.CLOSE
+        return Dizanje()
+
+    def spusti(self):
+        self >> T.OPEN
+        self >> T.CLOSE
+        return Spustanje()
 
     def whilePetlja(self):
         self >> T.WHILE
@@ -455,6 +533,11 @@ def numBoolToToken(num):
 #          Pridruzivanje: tip:TYPE ime:NAME pridruženo:izraz
 #          Azuriranje: tip:TYPE ime:NAME pridruženo:izraz
 #          Vrati: tip:TYPE što:izraz
+#          Pomak: pomak:NUM
+#          Okretaj: kut:NUM
+#          Provjera: udaljenost:NUM
+#          Dizanje:
+#          Spustanje:
 # izraz: Usporedba: lijevo:aritm relacija:EE|NE|LT|LE|GT|GE desno:aritm
 #        NUM: Token
 #        NAME: Token
@@ -554,6 +637,106 @@ class ForPetlja(AST("i stopUsporedba stopVar inkrement blok")):
             i += self.inkrement
             mem[i] = i
 
+class Pomak(AST('pomak')):
+    def izvrsi(self, symtab, mem, unutar):
+        global pozx, pozy, smjer, mapa, smjerovi
+        n = 0
+        jeli_ikona = True if mapa[pozx][pozy] in ikone else False
+        mapa[pozx][pozy] = '*'
+        if smjer in {'gore', 'dolje'}:
+            while mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] == '*' and n < int(self.pomak.vrijednost(mem, unutar)):
+                pozx += (smjerovi.index(smjer)) - 1
+                n += 1
+            mapa[pozx][pozy] = (ikone[smjerovi.index (smjer)] if jeli_ikona else kutije[smjerovi.index (smjer)])
+        elif smjer in {'lijevo', 'desno'}:
+            while mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] == '*' and n < int(self.pomak.vrijednost(mem, unutar)):
+                pozy += (smjerovi.index(smjer)) - 2
+                n += 1
+            mapa[pozx][pozy] = (ikone[smjerovi.index (smjer)] if jeli_ikona else kutije[smjerovi.index (smjer)])
+        else:
+            raise GreškaIzvođenja(f'Smjer {smjer} nije valjan.')
+        return n
+
+
+class Okretaj(AST('kut')):
+    def izvrsi(self, symtab, mem, unutar):
+        global pozx, pozy, smjer, mapa, smjerovi
+        if (self.kut.vrijednost (mem, unutar) % 90):
+            raise GreškaIzvođenja(f'Kut {self.kut.vrijednost (mem, unutar)} nije višekratnik 90.')
+        
+        global pozx, pozy, smjer, mapa, smjerovi
+        kut = self.kut.vrijednost (mem, unutar) // 90
+        smjer = smjerovi[(smjerovi.index(smjer) + kut) % 4]
+        if mapa[pozx][pozy] in ikone:
+            mapa[pozx][pozy] = ikone[smjerovi.index (smjer)]
+        elif mapa[pozx][pozy] in kutije:
+            mapa[pozx][pozy] = kutije[smjerovi.index (smjer)]
+
+        #ovde ne triba nista vracat jer ce past na GreskaIzvodenja ako nije visekratnik 90 svakako
+
+class Provjera(AST('udaljenost')):
+    def izvrsi(self, symtab, mem, unutar):
+        if self.udaljenost.vrijednost(mem, unutar) == 0:
+            print ("true")
+            return T.TRUE
+        global pozx, pozy, smjer, mapa, smjerovi, senzor
+        #ovdje sam globalno (varijabla senzor) definirao udaljenost do koje njegovi senzori rade
+        x, y, n = pozx, pozy, 0
+        if smjer in {'gore', 'dolje'}:
+            while mapa[x + (smjerovi.index(smjer)) - 1][y] == '*' and n < int(self.udaljenost.vrijednost(mem, unutar)):
+                x += (smjerovi.index(smjer)) - 1
+                if (n == senzor):
+                    print ("unknown")
+                    return T.UNKNOWN
+                n += 1
+        elif smjer in {'lijevo', 'desno'}:
+            while mapa[x][y + (smjerovi.index(smjer)) - 2] == '*' and n < int(self.udaljenost.vrijednost(mem, unutar)):
+                y += (smjerovi.index(smjer)) - 2
+                #print (x, y, n)
+                #print (self.udaljenost.vrijednost(mem,unutar), x, y, n)
+                if (n == senzor):
+                    print ("unknown")
+                    return T.UNKNOWN
+                n += 1
+        else:
+            #ovo je stavljeno zbog nas, korisnik ne moze pristupati globalnoj varijabli smjer
+            raise GreškaIzvođenja(f'Smjer {smjer} nije valjan.')
+        #print (n)
+        #print (mapa[x][y], mapa[x][y + 1])
+        if n >= self.udaljenost.vrijednost (mem, unutar):
+            print ("true")
+            return T.TRUE
+        if n == senzor:
+            print ("unknown")
+            return T.UNKNOWN        
+        else:
+            print ("false")
+            return T.FALSE
+
+class Dizanje(AST('')):
+    def izvrsi(self, symtab, mem, unutar):
+        global pozx, pozy, smjer, mapa, smjerovi, kutija, kutije
+        if smjer in {'gore', 'dolje'}:
+                if mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] == kutija and mapa[pozx][pozy] not in kutije:
+                    mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] = '*'
+                    mapa[pozx][pozy] = kutije[smjerovi.index (smjer)]
+        elif smjer in {'lijevo', 'desno'}:
+            if mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] == kutija and mapa[pozx][pozy] not in kutije:
+                mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] = '*'
+                mapa[pozx][pozy] = kutije[smjerovi.index (smjer)]
+
+class Spustanje(AST('')): 
+    def izvrsi(self, symtab, mem, unutar):
+        global pozx, pozy, smjer, mapa, smjerovi, kutija, kutije
+        if smjer in {'gore', 'dolje'}:
+            if mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] == '*' and mapa[pozx][pozy] in kutije:
+                mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] = kutija
+                mapa[pozx][pozy] = ikone[smjerovi.index (smjer)]
+        elif smjer in {'lijevo', 'desno'}:
+            if mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] == '*' and mapa[pozx][pozy] in kutije:
+                mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] = kutija
+                mapa[pozx][pozy] = ikone[smjerovi.index (smjer)]
+
 
 def usporedi(l, relacija, d):
     if relacija ^ T.EE:
@@ -647,7 +830,22 @@ class Povratak(NelokalnaKontrolaToka): """Signal koji šalje naredba vrati."""
 # prikaz(proba, 5)
 # izvrsi(proba)
 
-# TODO: u funkciji argumenti rijesiti da se mogu pozivati funkcije s proizvoljnim imenom
+#TODO: u funkciji argumenti rijesiti da se mogu pozivati funkcije s proizvoljnim imenom
+
+
+# proba2 = P('''\
+# def Number zbroj (Number n, Number m) {return n+m;}
+# def Number main () {Number n = 1; Number d = 2; return zbroj(n, d);}
+# ''')
+# prikaz(proba2, 5)
+# izvrsi(proba2)
+
+# proba3 = P('''\
+# def Number main () {Number m = 1; Number n = 2; return m - n;}
+# ''')
+
+# prikaz(proba3)
+# izvrsi(proba3)
 
 # proba2 = P('''\
 # def Number zbroj (Number n, Number m) {return n+m;}
@@ -663,7 +861,7 @@ class Povratak(NelokalnaKontrolaToka): """Signal koji šalje naredba vrati."""
 # izvrsi(pretvorba)
 
 # TODO: rekurzivni pozivi ne rade za sad
-
+"""
 rekurzivna = P('''\
     def Number fakt(Number n)
     {
@@ -683,3 +881,58 @@ rekurzivna = P('''\
 ''')
 prikaz(rekurzivna)
 izvrsi(rekurzivna)
+# prikaz(rekurzivna)
+# izvrsi(rekurzivna)
+"""
+
+
+
+
+
+'''
+### testovi za FORWARD, TURN i CHECK (bez prepreka)
+    prema gore:
+        def Number main () {turn (180); forward (1); forward (2); turn (180); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+        def Number main () {check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+        def Number main () {turn (180); forward (1); forward (2); turn (180); forward (2); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+
+    prema lijevo:
+        def Number main () {turn (180); turn (90); forward (1); forward (2); turn (180); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+        def Number main () {turn (180); turn (90); forward (1); forward (2); turn (180); forward (1); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+        def Number main () {turn (180); turn (90); forward (1); forward (2); turn (180); forward (2); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+        def Number main () {turn (180); turn (90); forward (1); forward (2); turn (180); forward (3); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+        def Number main () {turn (180); turn (90); forward (1); forward (2); turn (180); forward (4); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+
+    prema dolje:
+        def Number main () {turn (180); turn (180); forward (1); forward (2); turn (180); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+        def Number main () {turn (180); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+        def Number main () {turn (180); turn (180); forward (1); forward (2); turn (180); forward (2); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+
+    prema desno:
+        def Number main () {turn (90); forward (1); forward (2); turn (180); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+        def Number main () {turn (90); forward (1); forward (2); turn (180); forward (1); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+        def Number main () {turn (90); forward (1); forward (2); turn (180); forward (2); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+        def Number main () {turn (90); forward (1); forward (2); turn (180); forward (3); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+        def Number main () {turn (90); forward (1); forward (2); turn (180); forward (4); check (1); check (2); check (3); check (4); check (5); check (100); return 0;}
+
+### testovi za FORWARD, TURN i CHECK (prepreka na 2, 2)
+    def Number main () {turn (90); forward (2); check (3); return 0;}
+    def Number main () {forward (1); turn (90); forward (1); check (1); return 0;}
+    def Number main () {forward (1); turn (90); forward (1); turn (90); forward (2); check (1); return 0;}
+    def Number main () {forward (1); turn (90); forward (1);  forward (2); turn (90); forward (1); turn (90); check (4); forward (0);forward (1);forward (2);forward (3); return 0;}
+    def Number main () {forward (1); turn (90); forward (1);  forward (2); turn (90); forward (1); turn (90); forward (1); turn (270); forward (0); forward (1); turn (90); forward (1); turn (90); check (1); check (2); check (3); check (4); check (100); return 0;}
+
+### testovi za PICK i PUT:
+    def Number main () {pick (); turn (270); pick (); put (); pick (); forward (1);turn (270); pick ();  put (); turn (90); put (); turn (270);pick ();turn (90); put (); turn (90); pick (); put (); turn (270); pick (); put (); turn (180); forward (1); forward (100);return 0;}
+
+
+
+
+'''
+
+prikaz(proba3)
+print ('')
+#print (smjer)
+izvrsi(proba3)
+#print (smjer)
+print (*mapa, sep = '\n')
