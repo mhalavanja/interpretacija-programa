@@ -72,6 +72,7 @@ class T(TipoviTokena):
         literal = "forward"
 
         def vrijednost(self, mem, unutar): return mem[self]
+        #def typeCheck(self, mem): return T.FORWARD
 
     # Number turn(Number radians) okrece se u smjeru suprotnom od kazaljki na satu za radians radijana
     # Povratna vrijednost je broj radijana za koliko se okrenuo
@@ -220,7 +221,6 @@ class P(Parser):
         self >> T.DEF
         [self.tipf, self.imef], self.parametrif = self.tipIme(), self.parametri()
         # u symtab spremamo tipove lokalnih varijabli pa ih provjeravamo za vrijeme parsiranja
-
         blok = self.blok()
         return Funkcija(self.tipf, self.imef, self.parametrif, blok, self.symtab)
 
@@ -435,6 +435,9 @@ class P(Parser):
                     f"Tip varijable {ime} je tipa {self.symtab[ime].tip} nije očekivanog tipa {ocekivaniTip}")
             else:
                 return ime
+        elif ime.tip in {T.FORWARD, T.TURN, T.CHECK, T.PICK, T.PUT}:
+            self.vrati()
+            return self.naredba()
         elif force:
             raise SintaksnaGreška("Kriva eksplicitna pretvorba")
         else:
@@ -478,8 +481,8 @@ class P(Parser):
             return aritm
         elif num := self >= T.NUM:
             return num
-        # TODO: ovo mozda ne radi jer pise NUMBERTYPE umijesto NUM, al mislim da bi zapravo ovako trebalo biti
-        return self.mozda_poziv(self >> T.NAME, T.NUMBERTYPE)
+        #TODO: moramo dodati i ostale T.TURN, T.CHECK... 
+        return self.mozda_poziv(self >> {T.NAME, T.FORWARD}, T.NUMBERTYPE)
 
     # List mojaLista = [[1,2,3],[[true], 1, 2], 3]
     def list(self):
@@ -553,7 +556,7 @@ class Funkcija(AST('povratniTip ime parametri blok symtab')):
         symtab = Memorija(dict(self.symtab))
         lokalni = Memorija(dict(zip(parametriImena, argumenti)))
         try:
-            self.blok.izvrsi(symtab, lokalni, self)
+            self.blok.vrijednost(lokalni, self)
         except Povratak as exc:
             return exc.preneseno
         else:
@@ -602,7 +605,7 @@ class Binarna(AST('op lijevo desno')):
 
 class Unarna(AST('op ispod')):
     def vrijednost(self, mem, unutar):
-        o, x = self.op, self.ispod.vrijednost(self, mem, unutar)
+        o, x = self.op, self.ispod.vrijednost(mem, unutar)
         if o ^ T.MINUS:
             return -x
         elif o ^ T.NOT:
@@ -613,32 +616,32 @@ class Unarna(AST('op ispod')):
 
 class Grananje(
     AST("ifUvjet ifNaredbe elifUvjet elifNaredbe elseNaredbe")):  # Grananje(AST('istinitost uvjet onda inače')):
-    def izvrsi(self, symtab, mem, unutar):
+    def vrijednost(self, mem, unutar):
         if self.ifUvjet.vrijednost(mem, unutar) == 1:
-            self.ifNaredbe.izvrsi(symtab, mem, unutar)
+            self.ifNaredbe.vrijednost(mem, unutar)
         elif self.elifUvjet and self.elifUvjet.vrijednost(mem, unutar) == 1:
-            self.elifNaredbe.izvrsi(symtab, mem, unutar)
+            self.elifNaredbe.vrijednost(mem, unutar)
         else:
-            self.elseNaredbe.izvrsi(symtab, mem, unutar)
+            self.elseNaredbe.vrijednost(mem, unutar)
 
 
 class WhilePetlja(AST("logUvjet blok")):
-    def izvrsi(self, symtab, mem, unutar):
-        while self.logUvjet.vrijednost(self, mem, unutar): self.blok.izvrsi(self, symtab, mem, unutar)
+    def vrijednost(self, mem, unutar):
+        while self.logUvjet.vrijednost(self, mem, unutar): self.blok.vrijednost(self, mem, unutar)
 
 
 class ForPetlja(AST("i stopUsporedba stopVar inkrement blok")):
-    def izvrsi(self, symtab, mem, unutar):
+    def vrijednost(self, mem, unutar):
         i = self.i.vrijednost(mem, unutar)
         stopVar = self.stopVar.vrijednost(mem, unutar)
         while (usporedi(i, self.stopUsporedba, stopVar)):
-            self.blok.izvrsi(self, symtab, mem, unutar)
+            self.blok.vrijednost(self, mem, unutar)
             i += self.inkrement
             mem[i] = i
 
 
 class Pomak(AST('pomak')):
-    def izvrsi(self, symtab, mem, unutar):
+    def vrijednost(self, mem, unutar):
         global pozx, pozy, smjer, mapa, smjerovi
         n = 0
         jeli_ikona = True if mapa[pozx][pozy] in ikone else False
@@ -659,7 +662,7 @@ class Pomak(AST('pomak')):
 
 
 class Okretaj(AST('kut')):
-    def izvrsi(self, symtab, mem, unutar):
+    def vrijednost(self, mem, unutar):
         global pozx, pozy, smjer, mapa, smjerovi
         if (self.kut.vrijednost(mem, unutar) % 90):
             raise GreškaIzvođenja(f'Kut {self.kut.vrijednost(mem, unutar)} nije višekratnik 90.')
@@ -676,7 +679,7 @@ class Okretaj(AST('kut')):
 
 
 class Provjera(AST('udaljenost')):
-    def izvrsi(self, symtab, mem, unutar):
+    def vrijednost(self, mem, unutar):
         if self.udaljenost.vrijednost(mem, unutar) == 0:
             print("true")
             return T.TRUE
@@ -716,7 +719,7 @@ class Provjera(AST('udaljenost')):
 
 
 class Dizanje(AST('')):
-    def izvrsi(self, symtab, mem, unutar):
+    def vrijednost(self, mem, unutar):
         global pozx, pozy, smjer, mapa, smjerovi, kutija, kutije
         if smjer in {'gore', 'dolje'}:
             if mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] == kutija and mapa[pozx][pozy] not in kutije:
@@ -729,7 +732,7 @@ class Dizanje(AST('')):
 
 
 class Spustanje(AST('')):
-    def izvrsi(self, symtab, mem, unutar):
+    def vrijednost(self, mem, unutar):
         global pozx, pozy, smjer, mapa, smjerovi, kutija, kutije
         if smjer in {'gore', 'dolje'}:
             if mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] == '*' and mapa[pozx][pozy] in kutije:
@@ -766,7 +769,7 @@ class Usporedba(AST('lijevo relacija desno')):
 
 
 class Pridruzivanje(AST('ime pridruzeno')):
-    def izvrsi(self, symtab, mem, unutar):
+    def vrijednost(self, mem, unutar):
         # TODO: Mislim da svu provjeru tipova vec imamo obavljenu u parseru
 
         # lijevo = symtab[self.varijabla]
@@ -777,7 +780,7 @@ class Pridruzivanje(AST('ime pridruzeno')):
 
 
 class Azuriranje(AST("ime izraz")):
-    def izvrsi(self, symtab, mem, unutar):
+    def vrijednost(self, mem, unutar):
         mem[self.ime] = self.izraz.vrijednost(mem, unutar)
 
 
@@ -826,54 +829,73 @@ class Pretvorba(AST("kojiTip var uTip")):
 
 
 class Blok(AST('naredbe')):
-    def izvrsi(self, symtab, mem, unutar):
-        for naredba in self.naredbe: naredba.izvrsi(symtab, mem, unutar)
+    def vrijednost(self, mem, unutar):
+        for naredba in self.naredbe: naredba.vrijednost(mem, unutar)
 
 
 class Vrati(AST('sto')):
-    def izvrsi(self, symtab, mem, unutar):
+    def vrijednost(self, mem, unutar):
         raise Povratak(self.sto.vrijednost(mem, unutar))
 
 
 class Povratak(NelokalnaKontrolaToka): """Signal koji šalje naredba vrati."""
 
 
-proba = P('def Number main () {Number c = 1; if (c == 1){ return 1;} else {return 2;}}')
-prikaz(proba, 5)
+proba = P('''\
+    def Number main(){
+        forward(2);
+        return forward(2);
+    }
+''')
+#print(P.tokeniziraj(proba))
+#prikaz(proba)
 izvrsi(proba)
 
-# TODO: u funkciji argumenti rijesiti da se mogu pozivati funkcije s proizvoljnim imenom
+proba = P('def Number main () {Number c = -1; Number d = -2; if (c == -1){ return c-d;} else {return 0;}}')
+#prikaz(proba, 5)
+izvrsi(proba)
+
+
+proba = P('def Number main () {Number c = -1; Number d = -2; if (c == -1){ return c-d;} else {return 0;}}')
+#prikaz(proba, 5)
+izvrsi(proba)
+
+proba = P('def Number main () {Number c = 1; if (c == 1){ return 1;} else {return 2;}}')
+#prikaz(proba, 5)
+izvrsi(proba)
+
+#TODO: u funkciji argumenti rijesiti da se mogu pozivati funkcije s proizvoljnim imenom
 
 
 proba2 = P('''\
 def Number zbroj (Number n, Number m) {return n+m;}
 def Number main () {Number n = 1; Number d = 2; return zbroj(n, d);}
 ''')
-prikaz(proba2)
+#prikaz(proba2)
 izvrsi(proba2)
 
 proba3 = P('''\
 def Number main () {Number m = 1; Number n = 2; return m - n;}
 ''')
 
-prikaz(proba3)
+#prikaz(proba3)
 izvrsi(proba3)
 
 proba4 = P('''\
 def Number zbroj (Number n, Number m) {return n+m;}
 def Number main () {Number n = 1; Number m = 2; return zbroj(n, m);}
 ''')
-prikaz(proba4, 5)
+#prikaz(proba4, 5)
 izvrsi(proba4)
 
 # TODO: Bool i List se ne mogu usporedivati
 
 pretvorba = P('''\
-#def Bool f () {Number n = 0; Bool m = (Bool) n; return m;}
+def Bool f () {Number n = 0; Bool m = (Bool) n; return m;}
 def List g () {List n = [1,2,False,[[],1,2],True];return n;}
 #def Bool main(){List y = g(); List v = [y];Bool x = (Bool) v; return x;}
-#def Number main(){List y = g(); List v = y;Number x = (Number) v; return x;}
-def List main(){List x = (List) 5; return x;}
+def Number main(){List y = g(); List v = y;Number x = (Number) v; return x;}
+#def List main(){List x = (List) 5; return x;}
 #def List main(){List y = g(); return y;}
 
 ''')
@@ -897,7 +919,7 @@ rekurzivna = P('''\
         return fakt(5);
         }
 ''')
-prikaz(rekurzivna)
+#prikaz(rekurzivna)
 izvrsi(rekurzivna)
 
 listeOsnovno = P('''\
@@ -907,7 +929,7 @@ listeOsnovno = P('''\
         return a;
         }
 ''')
-prikaz(listeOsnovno)
+#prikaz(listeOsnovno)
 izvrsi(listeOsnovno)
 
 
@@ -920,7 +942,7 @@ aritm = P('''\
         return c;
         }
 ''')
-prikaz(aritm)
+#prikaz(aritm)
 izvrsi(aritm)
 
 '''
