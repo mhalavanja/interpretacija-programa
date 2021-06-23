@@ -12,6 +12,9 @@ kutija = '█'
 # print (*mapa, sep = '\n')
 
 # TODO: je li nam problem to sto su ove varijable globalne ako zelimo
+# TODO: ne rade negativni brojevi
+# TODO: Bool i List se ne mogu usporedivati
+
 from vepar import *
 
 # Ovo je odnos izmedu Token() i .tip,inace pada
@@ -207,11 +210,10 @@ class P(Parser):
             funkcije.append(funkcija.ime)
             self.funkcije[funkcija.ime] = funkcija
 
-        while not self > KRAJ:
-            naredbe.append(self.naredba())
-            self >> {T.SEMICOL, KRAJ}  # TODO: Mislim da ovo ne treba zbog petlji i if
+        # while not self > KRAJ:
+        #     naredbe.append(self.naredba())
+        #     self >> {T.SEMICOL, KRAJ}  # TODO: Mislim da ovo ne treba zbog petlji i if
         return self.funkcije
-        # return Program(funkcije, naredbe, self.funkcije, self.symtab)
 
     def funkcija(self):
         self.symtab = Memorija(redefinicija=False)
@@ -400,9 +402,9 @@ class P(Parser):
             return log
         if self > T.NAME:
             name = self >= T.NAME
-            if (name in self.symtab and self.symtab[name] == Token(T.BOOLTYPE)) or (
-                    name in self.funkcije and self.funkcije[name].tip == T.BOOLTYPE) or (
-                    name == self.imef and self.tipf == T.BOOLTYPE):
+            if (name in self.symtab and self.symtab[name] ^ T.BOOLTYPE) or (
+                    name in self.funkcije and self.funkcije[name].povratniTip ^ T.BOOLTYPE) or (
+                    name == self.imef and self.tipf ^ T.BOOLTYPE):
                 return self.mozda_poziv(name, T.BOOLTYPE)
             else:
                 self.vrati()
@@ -419,7 +421,7 @@ class P(Parser):
     def mozda_poziv(self, ime, ocekivaniTip, force=False):
         if ime in self.funkcije:
             funkcija = self.funkcije[ime]
-            if not(funkcija.povratniTip ^ ocekivaniTip): raise SemantičkaGreška(
+            if not (funkcija.povratniTip ^ ocekivaniTip): raise SemantičkaGreška(
                 f"Povratni tip funkcije {ime} nije očekivanog tipa {ocekivaniTip}")
             return Poziv(funkcija, self.argumenti(funkcija.parametri))
         elif ime == self.imef:
@@ -428,7 +430,7 @@ class P(Parser):
             # print(self.symtab[ime])
             # print(self.symtab[ime].tip)
             # print(ocekivaniTip)
-            if not(self.symtab[ime].tip == ocekivaniTip):
+            if not (self.symtab[ime].tip == ocekivaniTip):
                 raise SemantičkaGreška(
                     f"Tip varijable {ime} je tipa {self.symtab[ime].tip} nije očekivanog tipa {ocekivaniTip}")
             else:
@@ -477,23 +479,26 @@ class P(Parser):
         elif num := self >= T.NUM:
             return num
         # TODO: ovo mozda ne radi jer pise NUMBERTYPE umijesto NUM, al mislim da bi zapravo ovako trebalo biti
-        return self.mozda_poziv(self >> {T.NAME, T.FORWARD}, T.NUMBERTYPE)
+        return self.mozda_poziv(self >> T.NAME, T.NUMBERTYPE)
 
     # List mojaLista = [[1,2,3],[[true], 1, 2], 3]
     def list(self):
         if self >= T.OPEN:
             if self >> T.LISTTYPE: return self.pretvorba(T.LISTTYPE)
-        if name := self >= T.NAME: return self.mozda_poziv(name, T.LISTTYPE)
-        self >> T.OLIST
-        argumenti = [self.listArgument()]
-        while self >= T.COMMA: argumenti.append(self.listArgument())
-        self >> T.CLIST
-        return Lista(argumenti)
+        elif name := self >= T.NAME:
+            return self.mozda_poziv(name, T.LISTTYPE)
+        else:
+            self >> T.OLIST
+            if self >= T.CLIST: return Lista([])
+            argumenti = [self.listArgument()]
+            while self >= T.COMMA: argumenti.append(self.listArgument())
+            self >> T.CLIST
+            return Lista(argumenti)
 
     def listArgument(self):
         if self > T.OLIST:
-            return [self.list()]
-        elif name := self >> {T.NUM, T.TRUE, T.FALSE, T.UNKNOWN}:
+            return Lista(self.list())
+        elif name := self >= {T.NUM, T.TRUE, T.FALSE, T.UNKNOWN}:
             return name
         return self.mozda_poziv(self >> T.NAME, T.LISTTYPE)
 
@@ -778,7 +783,11 @@ class Azuriranje(AST("ime izraz")):
 
 class Lista(AST("argumenti")):
     def vrijednost(self, mem, unutar):
-        return [arg.vrijednost(mem, unutar) for arg in self.argumenti]
+        lista = []
+        for arg in self.argumenti:
+            if (isinstance(arg, ListaAST)): arg = Lista(arg)
+            lista.append(arg.vrijednost(mem, unutar))
+        return lista
 
 
 class Pretvorba(AST("kojiTip var uTip")):
@@ -801,8 +810,10 @@ class Pretvorba(AST("kojiTip var uTip")):
             if uTip ^ T.NUMBERTYPE:
                 return vrijednost
             if uTip ^ T.BOOLTYPE:
-                if vrijednost in {-1,0}: return vrijednost
-                else: return 1
+                if vrijednost in {-1, 0}:
+                    return vrijednost
+                else:
+                    return 1
             if uTip ^ T.LISTTYPE:
                 return [vrijednost]
         if kojiTip ^ T.BOOLTYPE:
@@ -827,44 +838,47 @@ class Vrati(AST('sto')):
 class Povratak(NelokalnaKontrolaToka): """Signal koji šalje naredba vrati."""
 
 
-# proba = P('def Number main () {Number c = 1; if (c == 1){ return 1;} else {return 2;}}')
-# prikaz(proba, 5)
-# izvrsi(proba)
+proba = P('def Number main () {Number c = 1; if (c == 1){ return 1;} else {return 2;}}')
+prikaz(proba, 5)
+izvrsi(proba)
 
 # TODO: u funkciji argumenti rijesiti da se mogu pozivati funkcije s proizvoljnim imenom
 
 
-# proba2 = P('''\
-# def Number zbroj (Number n, Number m) {return n+m;}
-# def Number main () {Number n = 1; Number d = 2; return zbroj(n, d);}
-# ''')
-# prikaz(proba2)
-# izvrsi(proba2)
+proba2 = P('''\
+def Number zbroj (Number n, Number m) {return n+m;}
+def Number main () {Number n = 1; Number d = 2; return zbroj(n, d);}
+''')
+prikaz(proba2)
+izvrsi(proba2)
 
-# proba3 = P('''\
-# def Number main () {Number m = 1; Number n = 2; return m - n;}
-# ''')
+proba3 = P('''\
+def Number main () {Number m = 1; Number n = 2; return m - n;}
+''')
 
-# prikaz(proba3)
-# izvrsi(proba3)
+prikaz(proba3)
+izvrsi(proba3)
 
-# proba2 = P('''\
-# def Number zbroj (Number n, Number m) {return n+m;}
-# def Number main () {Number n = 1; Number m = 2; return zbroj(n, m);}
-# ''')
-# prikaz(proba2, 5)
-# izvrsi(proba2)
+proba4 = P('''\
+def Number zbroj (Number n, Number m) {return n+m;}
+def Number main () {Number n = 1; Number m = 2; return zbroj(n, m);}
+''')
+prikaz(proba4, 5)
+izvrsi(proba4)
 
-# pretvorba = P('''\
-# def Bool f () {Number n = 0; Bool m = (Bool) n; return m;}
-# #def Bool main(){Bool x = f(); return x;}
-# #def Bool main(){Bool x = Unknown; if(x == Unknown){return True;}else{return False;}}
-# def Bool main(){Bool x = False; return x;}
-# ''')
+# TODO: Bool i List se ne mogu usporedivati
+
+pretvorba = P('''\
+#def Bool f () {Number n = 0; Bool m = (Bool) n; return m;}
+def List g () {List n = [1,2,False,[[],1,2],True];return n;}
+#def Bool main(){List y = g(); List v = [y];Bool x = (Bool) v; return x;}
+#def Number main(){List y = g(); List v = y;Number x = (Number) v; return x;}
+def List main(){List x = (List) 5; return x;}
+#def List main(){List y = g(); return y;}
+
+''')
 # prikaz(pretvorba)
-# izvrsi(pretvorba)
-
-# TODO: rekurzivni pozivi ne rade za sad
+izvrsi(pretvorba)
 
 rekurzivna = P('''\
     def Number fakt(Number n)
@@ -883,10 +897,31 @@ rekurzivna = P('''\
         return fakt(5);
         }
 ''')
-# print(P.tokeniziraj(rekurzivna))
-# prikaz(rekurzivna)
+prikaz(rekurzivna)
 izvrsi(rekurzivna)
 
+listeOsnovno = P('''\
+    def List main(){
+        List a = [1, True, [2, Unknown]];
+        a = [111];
+        return a;
+        }
+''')
+prikaz(listeOsnovno)
+izvrsi(listeOsnovno)
+
+
+aritm = P('''\
+    def Number f(){return 4;}
+    def Number main(){
+        Number a = 2;
+        Number b = f() + 3 / 2;
+        Number c = a+a+b;
+        return c;
+        }
+''')
+prikaz(aritm)
+izvrsi(aritm)
 
 '''
 ### testovi za FORWARD, TURN i CHECK (bez prepreka)
