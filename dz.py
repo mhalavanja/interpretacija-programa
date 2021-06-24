@@ -1,21 +1,34 @@
+from time import sleep
+
 n = 5
-test = ['#######', '#**█**#', '#**↑**#', '#***█*#', '#######']
+test = ['#######', '#↓****#', '#*****#', '#****█#', '#######']
+
 mapa = res = [list(sub) for sub in test]
-smjer = 'gore'
 smjerovi = ['gore', 'lijevo', 'dolje', 'desno']
-pozx = 2
-pozy = 3
-senzor = 3
 ikone = ['↑', '←', '↓', '→']
 kutije = ['▲', '◄', '▼', '►']
 kutija = '█'
+smjer = 'dolje'
+pozx = 1
+pozy = 1
+senzor = 3
 # print (*mapa, sep = '\n')
 
-# TODO: je li nam problem to sto su ove varijable globalne ako zelimo
-# TODO: ne rade negativni brojevi
-# TODO: Bool i List se ne mogu usporedivati
+# TODO: ";" se mora staviti nakon condiitional naredbi
+# Bool i List se ne mogu usporedivati
 
 from vepar import *
+import pprint
+
+pp = pprint.PrettyPrinter()
+
+
+def nacrtajMapu(mapa, poruka, seconds=1):
+    sleep(seconds)
+    print(poruka)
+    pp.pprint(mapa)
+    print()
+
 
 # Ovo je odnos izmedu Token() i .tip,inace pada
 # Token(T.NESTO) -> NESTO'Nesto'
@@ -31,73 +44,63 @@ class T(TipoviTokena):
     # PICK, PUT = "pick", "put"  # pick up, put down
 
     class NAME(Token):
-        # TODO: Ako ne postoji varijabla u lokalnoj memoriji, mozda je u globalnoj
-        def vrijednost(self, mem, unutar): return mem[self]
+        def izvrsi(self, mem, globalni, unutar): return mem[self]
 
     class NUM(Token):
-        def vrijednost(self, mem, unutar): return int(self.sadržaj)
-
-        def typeCheck(self, mem): return T.NUMBERTYPE
+        def izvrsi(self, mem, globalni, unutar): return int(self.sadržaj)
 
     class BREAK(Token):
         literal = 'break'
 
-        def run(self, mem, unutar): raise Break
+        def izvrsi(self, mem, globalni, unutar): raise Break
 
     class TRUE(Token):
         literal = 'True'
 
-        def vrijednost(self, mem, unutar): return 1
-
-        def typeCheck(self, mem): return T.BOOLTYPE
+        def izvrsi(self, mem, globalni, unutar): return 1
 
     class FALSE(Token):
         literal = 'False'
 
-        def vrijednost(self, mem, unutar): return -1
-
-        def typeCheck(self, mem): return T.BOOLTYPE
+        def izvrsi(self, mem, globalni, unutar): return -1
 
     class UNKNOWN(Token):
         literal = 'Unknown'
 
-        def vrijednost(self, mem, unutar): return 0
-
-        def typeCheck(self, mem): return T.BOOLTYPE
+        def izvrsi(self, mem, globalni, unutar): return 0
 
     # Number forward(Number cm) ide u naprijed za cm centimetara
-    # Povratna vrijednost je broj centimetara za koje je otisao naprijed
+    # Povratna izvrsi je broj centimetara za koje je otisao naprijed
     # (da znamo koliko je otisao naprijed ako ne moze ici za zadani broj)
     class FORWARD(Token):
         literal = "forward"
 
-        def vrijednost(self, mem, unutar): return mem[self]
-        #def typeCheck(self, mem): return T.FORWARD
+        def izvrsi(self, mem, globalni, unutar): return mem[self]
 
     # Number turn(Number radians) okrece se u smjeru suprotnom od kazaljki na satu za radians radijana
-    # Povratna vrijednost je broj radijana za koliko se okrenuo
+    # Povratna izvrsi je broj radijana za koliko se okrenuo
     # (da znamo koliko se okrenuo ako se ne moze okrenuti za zadani broj)
     class TURN(Token):
         literal = "turn"
 
-        def vrijednost(self, mem, unutar): return mem[self]
+        def izvrsi(self, mem, globalni, unutar): return mem[self]
 
     # Bool check(Number cm) provjeri vidi li zapreku u narednih cm centimetara
-    # Povratna vrijednost označava postoji li zapreka
+    # Povratna izvrsi označava postoji li zapreka
     class CHECK(Token):
         literal = "check"
 
-        def vrijednost(self, mem, unutar): return mem[self]
+        def izvrsi(self, mem, globalni, unutar): return mem[self]
 
     class PICK(Token):
         literal = "pick"  # pick up objekt koji je pickupable :)
 
-        def vrijednost(self, mem, unutar): return mem[self]
+        def izvrsi(self, mem, globalni, unutar): return mem[self]
 
     class PUT(Token):
         literal = "put"  # put down objekt koji robot drzi
 
-        def vrijednost(self, mem, unutar): return mem[self]
+        def izvrsi(self, mem, globalni, unutar): return mem[self]
 
 
 class Break(NelokalnaKontrolaToka):
@@ -142,7 +145,7 @@ def lexer(lex):
             lex.zvijezda(identifikator)
             yield lex.literal(T.NAME)
         elif znak.isdecimal():
-            lex.prirodni_broj(znak)  # TODO: Dodati decimalne brojeve ako stignemo
+            lex.prirodni_broj(znak)
             yield lex.token(T.NUM)
         else:
             yield lex.literal(T)
@@ -196,24 +199,9 @@ operatoriUsporedbe = {T.EE, T.NE, T.LE, T.LT, T.GE, T.GT}
 class P(Parser):
     def program(self):
         self.funkcije = Memorija(redefinicija=False)
-
-        # self.symtab = Memorija()  # globalna memorija za varijable
-        # self.funkcije["forward"] = Funkcija([T.NUMBERTYPE, "forward", [T.NUMBERTYPE, "centimeters"]])
-        # self.funkcije["turn"] = Funkcija([T.NUMBERTYPE, "turn", [T.NUMBERTYPE, "radians"]])
-        # self.funkcije["check"] = Funkcija([T.BOOLTYPE, "check", [T.NUMBERTYPE, "centimeters"]])
-
-        naredbe = funkcije = []
-
-        # TODO: napraviti da funkcije ne moraju biti samo na pocetku koda, ako budemo imali naredbe jos
-
         while self > T.DEF:
             funkcija = self.funkcija()
-            funkcije.append(funkcija.ime)
             self.funkcije[funkcija.ime] = funkcija
-
-        # while not self > KRAJ:
-        #     naredbe.append(self.naredba())
-        #     self >> {T.SEMICOL, KRAJ}  # TODO: Mislim da ovo ne treba zbog petlji i if
         return self.funkcije
 
     def funkcija(self):
@@ -265,8 +253,6 @@ class P(Parser):
             if ime in self.symtab: raise SemantičkaGreška("Varijabla se ne može dva puta inicijalizirati")
             self >> T.EQ
             self.symtab[ime] = tipVarijable
-            # return Pridruzivanje(tipVarijable, ime, self.tipa(tipVarijable))
-            # TODO: mislim da ne treba proslijedivat tip varijabli
             return Pridruzivanje(ime, self.tipa(tipVarijable))
         else:  # azuriranje
             ime = self >> T.NAME
@@ -274,8 +260,6 @@ class P(Parser):
                 if ime not in self.symtab: raise SemantičkaGreška(
                     "Varijabla se ne može ažurirati prije inicijalizacije")
                 tipVarijable = self.symtab[ime]
-                # return Azuriranje(tipVarijable.tip, ime, self.tipa(tipVarijable))
-                # TODO: mislim da ne treba proslijedivat tip varijabli
                 return Azuriranje(ime, self.tipa(tipVarijable))
 
     def tipa(self, tip):
@@ -400,11 +384,10 @@ class P(Parser):
     def logIzraz(self):
         if log := self >= {T.TRUE, T.FALSE, T.UNKNOWN}:
             return log
-        if self > T.NAME:
-            name = self >= T.NAME
+        if name := self >= {T.NAME, T.PICK, T.PUT, T.CHECK}:
             if (name in self.symtab and self.symtab[name] ^ T.BOOLTYPE) or (
                     name in self.funkcije and self.funkcije[name].povratniTip ^ T.BOOLTYPE) or (
-                    name == self.imef and self.tipf ^ T.BOOLTYPE):
+                    name == self.imef and self.tipf ^ T.BOOLTYPE) or name ^ {T.PICK, T.PUT, T.CHECK}:
                 return self.mozda_poziv(name, T.BOOLTYPE)
             else:
                 self.vrati()
@@ -417,7 +400,6 @@ class P(Parser):
             return logStart
         return Usporedba(self.aritm(), self >> operatoriUsporedbe, self.aritm())
 
-    # TODO: mozda da vracamo fale umjesto gresaka, pa da se greske handlaju izvan ove fje
     def mozda_poziv(self, ime, ocekivaniTip, force=False):
         if ime in self.funkcije:
             funkcija = self.funkcije[ime]
@@ -427,9 +409,6 @@ class P(Parser):
         elif ime == self.imef:
             return Poziv(nenavedeno, self.argumenti(self.parametrif))
         elif ime in self.symtab:
-            # print(self.symtab[ime])
-            # print(self.symtab[ime].tip)
-            # print(ocekivaniTip)
             if not (self.symtab[ime].tip == ocekivaniTip):
                 raise SemantičkaGreška(
                     f"Tip varijable {ime} je tipa {self.symtab[ime].tip} nije očekivanog tipa {ocekivaniTip}")
@@ -481,10 +460,8 @@ class P(Parser):
             return aritm
         elif num := self >= T.NUM:
             return num
-        #TODO: moramo dodati i ostale T.TURN, T.CHECK... 
-        return self.mozda_poziv(self >> {T.NAME, T.FORWARD}, T.NUMBERTYPE)
+        return self.mozda_poziv(self >> {T.NAME, T.FORWARD, T.TURN, T.CHECK}, T.NUMBERTYPE)
 
-    # List mojaLista = [[1,2,3],[[true], 1, 2], 3]
     def list(self):
         if self >= T.OPEN:
             if self >> T.LISTTYPE: return self.pretvorba(T.LISTTYPE)
@@ -509,8 +486,8 @@ class P(Parser):
     lexer = lexer
 
 
-def izvrsi(funkcije, *argv):
-    print('Main je vratio:', funkcije['main'].pozovi(argv))
+def izvrsi(funkcije, *argumenti, **globalni):
+    print('Main je vratio:', funkcije['main'].pozovi(argumenti, globalni))
 
 
 def numBoolToToken(num):
@@ -521,10 +498,8 @@ def numBoolToToken(num):
     elif num == 1:
         return T.TRUE
     else:
-        assert False, f"{num} nije vrijednost nikoje instance Bool tipa"
+        assert False, f"{num} nije izvrsi nikoje instance Bool tipa"
 
-
-# TODO: Dodati AST za eksplicitnu pretvorbu
 
 ### AST
 # Program: funkcije[funkcija] #(za sad nema ovog: naredbe:[naredba])
@@ -547,16 +522,14 @@ def numBoolToToken(num):
 #        Unarna: op:(aritm:MINUS)|(log:NOT) ispod:izraz
 #        Poziv: funkcija:Funkcija argumenti:[izraz]
 
-# TODO: Parametri se salje kao tuple tako da kod prikaza ASTa imamo tip i ime varijable
 class Funkcija(AST('povratniTip ime parametri blok symtab')):
-    def pozovi(self, argumenti):
+    def pozovi(self, argumenti, globalni):
         parametriImena = []
         for tip, ime in self.parametri:
             parametriImena.append(ime)
-        symtab = Memorija(dict(self.symtab))
         lokalni = Memorija(dict(zip(parametriImena, argumenti)))
         try:
-            self.blok.vrijednost(lokalni, self)
+            self.blok.izvrsi(lokalni, globalni, self)
         except Povratak as exc:
             return exc.preneseno
         else:
@@ -564,11 +537,11 @@ class Funkcija(AST('povratniTip ime parametri blok symtab')):
 
 
 class Poziv(AST('funkcija argumenti')):
-    def vrijednost(self, mem, unutar):
+    def izvrsi(self, mem, globalni, unutar):
         pozvana = self.funkcija
         if pozvana is nenavedeno: pozvana = unutar  # rekurzivni poziv
-        argumenti = [a.vrijednost(mem, unutar) for a in self.argumenti]
-        return pozvana.pozovi(argumenti)
+        argumenti = [a.izvrsi(mem, globalni, unutar) for a in self.argumenti]
+        return pozvana.pozovi(argumenti, globalni)
 
     def _asdict(self):  # samo za ispis, da se ne ispiše čitava funkcija
         za_ispis = {'argumenti': self.argumenti}
@@ -580,8 +553,8 @@ class Poziv(AST('funkcija argumenti')):
 
 
 class Binarna(AST('op lijevo desno')):
-    def vrijednost(self, mem, unutar):
-        o, x, y = self.op, self.lijevo.vrijednost(mem, unutar), self.desno.vrijednost(mem, unutar)
+    def izvrsi(self, mem, globalni, unutar):
+        o, x, y = self.op, self.lijevo.izvrsi(mem, globalni, unutar), self.desno.izvrsi(mem, globalni, unutar)
         try:
             if o ^ T.PLUS:
                 return x + y
@@ -604,8 +577,8 @@ class Binarna(AST('op lijevo desno')):
 
 
 class Unarna(AST('op ispod')):
-    def vrijednost(self, mem, unutar):
-        o, x = self.op, self.ispod.vrijednost(mem, unutar)
+    def izvrsi(self, mem, globalni, unutar):
+        o, x = self.op, self.ispod.izvrsi(mem, globalni, unutar)
         if o ^ T.MINUS:
             return -x
         elif o ^ T.NOT:
@@ -616,132 +589,200 @@ class Unarna(AST('op ispod')):
 
 class Grananje(
     AST("ifUvjet ifNaredbe elifUvjet elifNaredbe elseNaredbe")):  # Grananje(AST('istinitost uvjet onda inače')):
-    def vrijednost(self, mem, unutar):
-        if self.ifUvjet.vrijednost(mem, unutar) == 1:
-            self.ifNaredbe.vrijednost(mem, unutar)
-        elif self.elifUvjet and self.elifUvjet.vrijednost(mem, unutar) == 1:
-            self.elifNaredbe.vrijednost(mem, unutar)
+    def izvrsi(self, mem, globalni, unutar):
+        if self.ifUvjet.izvrsi(mem, globalni, unutar) == 1:
+            self.ifNaredbe.izvrsi(mem, globalni, unutar)
+        elif self.elifUvjet and self.elifUvjet.izvrsi(mem, globalni, unutar) == 1:
+            self.elifNaredbe.izvrsi(mem, globalni, unutar)
         else:
-            self.elseNaredbe.vrijednost(mem, unutar)
+            self.elseNaredbe.izvrsi(mem, globalni, unutar)
 
 
 class WhilePetlja(AST("logUvjet blok")):
-    def vrijednost(self, mem, unutar):
-        while self.logUvjet.vrijednost(self, mem, unutar): self.blok.vrijednost(self, mem, unutar)
+    def izvrsi(self, mem, globalni, unutar):
+        while self.logUvjet.izvrsi(mem, globalni, unutar) == 1: self.blok.izvrsi(mem, globalni, unutar)
 
 
 class ForPetlja(AST("i stopUsporedba stopVar inkrement blok")):
-    def vrijednost(self, mem, unutar):
-        i = self.i.vrijednost(mem, unutar)
-        stopVar = self.stopVar.vrijednost(mem, unutar)
+    def izvrsi(self, mem, globalni, unutar):
+        i = self.i.izvrsi(mem, globalni, unutar)
+        stopVar = self.stopVar.izvrsi(mem, globalni, unutar)
         while (usporedi(i, self.stopUsporedba, stopVar)):
-            self.blok.vrijednost(self, mem, unutar)
-            i += self.inkrement
-            mem[i] = i
+            self.blok.izvrsi(mem, globalni, unutar)
+            i += self.inkrement.izvrsi(mem, globalni, unutar)
+            mem[self.i] = i
 
 
 class Pomak(AST('pomak')):
-    def vrijednost(self, mem, unutar):
-        global pozx, pozy, smjer, mapa, smjerovi
+    def izvrsi(self, mem, globalni, unutar):
+        pozx = int(globalni["pozx"])
+        pozy = int(globalni["pozy"])
+        smjer = globalni["smjer"]
+        mapa = globalni["mapa"]
+        smjerovi = globalni["smjerovi"]
         n = 0
         jeli_ikona = True if mapa[pozx][pozy] in ikone else False
         mapa[pozx][pozy] = '*'
         if smjer in {'gore', 'dolje'}:
-            while mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] == '*' and n < int(self.pomak.vrijednost(mem, unutar)):
+            while mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] == '*' and n < int(
+                    self.pomak.izvrsi(mem, globalni, unutar)):
                 pozx += (smjerovi.index(smjer)) - 1
                 n += 1
             mapa[pozx][pozy] = (ikone[smjerovi.index(smjer)] if jeli_ikona else kutije[smjerovi.index(smjer)])
         elif smjer in {'lijevo', 'desno'}:
-            while mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] == '*' and n < int(self.pomak.vrijednost(mem, unutar)):
+            while mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] == '*' and n < int(
+                    self.pomak.izvrsi(mem, globalni, unutar)):
                 pozy += (smjerovi.index(smjer)) - 2
                 n += 1
             mapa[pozx][pozy] = (ikone[smjerovi.index(smjer)] if jeli_ikona else kutije[smjerovi.index(smjer)])
         else:
             raise GreškaIzvođenja(f'Smjer {smjer} nije valjan.')
+        nacrtajMapu(mapa, f"Pomakni se za {self.pomak.sadržaj}")
+        globalni["pozx"] = pozx
+        globalni["pozy"] = pozy
+        globalni["smjer"] = smjer
+        globalni["mapa"] = mapa
         return n
 
 
 class Okretaj(AST('kut')):
-    def vrijednost(self, mem, unutar):
-        global pozx, pozy, smjer, mapa, smjerovi
-        if (self.kut.vrijednost(mem, unutar) % 90):
-            raise GreškaIzvođenja(f'Kut {self.kut.vrijednost(mem, unutar)} nije višekratnik 90.')
+    def izvrsi(self, mem, globalni, unutar):
+        pozx = int(globalni["pozx"])
+        pozy = int(globalni["pozy"])
+        smjer = globalni["smjer"]
+        mapa = globalni["mapa"]
+        smjerovi = globalni["smjerovi"]
+        flag = -1
 
-        global pozx, pozy, smjer, mapa, smjerovi
-        kut = self.kut.vrijednost(mem, unutar) // 90
+        if (self.kut.izvrsi(mem, globalni, unutar) % 90):
+            raise GreškaIzvođenja(f'Kut {self.kut.izvrsi(mem, globalni, unutar)} nije višekratnik 90.')
+
+        kut = self.kut.izvrsi(mem, globalni, unutar) // 90
         smjer = smjerovi[(smjerovi.index(smjer) + kut) % 4]
         if mapa[pozx][pozy] in ikone:
             mapa[pozx][pozy] = ikone[smjerovi.index(smjer)]
+            flag = 1
         elif mapa[pozx][pozy] in kutije:
             mapa[pozx][pozy] = kutije[smjerovi.index(smjer)]
+            flag = 1
 
+        nacrtajMapu(mapa, f"Okreni se za {self.kut.sadržaj} stupnjeva")
+        globalni["pozx"] = pozx
+        globalni["pozy"] = pozy
+        globalni["smjer"] = smjer
+        globalni["mapa"] = mapa
+        return flag
         # ovde ne triba nista vracat jer ce past na GreskaIzvodenja ako nije visekratnik 90 svakako
 
 
 class Provjera(AST('udaljenost')):
-    def vrijednost(self, mem, unutar):
-        if self.udaljenost.vrijednost(mem, unutar) == 0:
+    def izvrsi(self, mem, globalni, unutar):
+        if self.udaljenost.izvrsi(mem, globalni, unutar) == 0:
             print("true")
-            return T.TRUE
-        global pozx, pozy, smjer, mapa, smjerovi, senzor
+            return 1
+        pozx = int(globalni["pozx"])
+        pozy = int(globalni["pozy"])
+        smjer = globalni["smjer"]
+        mapa = globalni["mapa"]
+        smjerovi = globalni["smjerovi"]
+        senzor = globalni["senzor"]
         # ovdje sam globalno (varijabla senzor) definirao udaljenost do koje njegovi senzori rade
         x, y, n = pozx, pozy, 0
         if smjer in {'gore', 'dolje'}:
-            while mapa[x + (smjerovi.index(smjer)) - 1][y] == '*' and n < int(self.udaljenost.vrijednost(mem, unutar)):
+            while mapa[x + (smjerovi.index(smjer)) - 1][y] == '*' and n < int(
+                    self.udaljenost.izvrsi(mem, globalni, unutar)):
                 x += (smjerovi.index(smjer)) - 1
                 if (n == senzor):
                     print("unknown")
-                    return T.UNKNOWN
+                    return 0
                 n += 1
         elif smjer in {'lijevo', 'desno'}:
-            while mapa[x][y + (smjerovi.index(smjer)) - 2] == '*' and n < int(self.udaljenost.vrijednost(mem, unutar)):
+            while mapa[x][y + (smjerovi.index(smjer)) - 2] == '*' and n < int(
+                    self.udaljenost.izvrsi(mem, globalni, unutar)):
                 y += (smjerovi.index(smjer)) - 2
                 # print (x, y, n)
-                # print (self.udaljenost.vrijednost(mem,unutar), x, y, n)
+                # print (self.udaljenost.izvrsi(mem,unutar), x, y, n)
                 if (n == senzor):
                     print("unknown")
-                    return T.UNKNOWN
+                    return 0
                 n += 1
         else:
             # ovo je stavljeno zbog nas, korisnik ne moze pristupati globalnoj varijabli smjer
             raise GreškaIzvođenja(f'Smjer {smjer} nije valjan.')
         # print (n)
         # print (mapa[x][y], mapa[x][y + 1])
-        if n >= self.udaljenost.vrijednost(mem, unutar):
+        if n >= self.udaljenost.izvrsi(mem, globalni, unutar):
             print("true")
-            return T.TRUE
+            return 1
         if n == senzor:
             print("unknown")
-            return T.UNKNOWN
+            return 0
         else:
             print("false")
-            return T.FALSE
+            return -1
 
 
 class Dizanje(AST('')):
-    def vrijednost(self, mem, unutar):
-        global pozx, pozy, smjer, mapa, smjerovi, kutija, kutije
+    def izvrsi(self, mem, globalni, unutar):
+        # print(globalni)
+        pozx = int(globalni["pozx"])
+        pozy = int(globalni["pozy"])
+        smjer = globalni["smjer"]
+        mapa = globalni["mapa"]
+        smjerovi = globalni["smjerovi"]
+        kutija = globalni["kutija"]
+        kutije = globalni["kutije"]
+        flag = -1
+
         if smjer in {'gore', 'dolje'}:
             if mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] == kutija and mapa[pozx][pozy] not in kutije:
                 mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] = '*'
                 mapa[pozx][pozy] = kutije[smjerovi.index(smjer)]
+                flag = 1
         elif smjer in {'lijevo', 'desno'}:
             if mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] == kutija and mapa[pozx][pozy] not in kutije:
                 mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] = '*'
                 mapa[pozx][pozy] = kutije[smjerovi.index(smjer)]
+                flag = 1
+
+        nacrtajMapu(mapa, "Podigni kutiju")
+        globalni["pozx"] = pozx
+        globalni["pozy"] = pozy
+        globalni["smjer"] = smjer
+        globalni["mapa"] = mapa
+        globalni["kutija"] = kutija
+        return flag
 
 
 class Spustanje(AST('')):
-    def vrijednost(self, mem, unutar):
-        global pozx, pozy, smjer, mapa, smjerovi, kutija, kutije
+    def izvrsi(self, mem, globalni, unutar):
+        pozx = int(globalni["pozx"])
+        pozy = int(globalni["pozy"])
+        smjer = globalni["smjer"]
+        mapa = globalni["mapa"]
+        smjerovi = globalni["smjerovi"]
+        kutija = globalni["kutija"]
+        kutije = globalni["kutije"]
+        flag = -1
+
         if smjer in {'gore', 'dolje'}:
             if mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] == '*' and mapa[pozx][pozy] in kutije:
                 mapa[pozx + (smjerovi.index(smjer)) - 1][pozy] = kutija
                 mapa[pozx][pozy] = ikone[smjerovi.index(smjer)]
+                flag = 1
         elif smjer in {'lijevo', 'desno'}:
             if mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] == '*' and mapa[pozx][pozy] in kutije:
                 mapa[pozx][pozy + (smjerovi.index(smjer)) - 2] = kutija
                 mapa[pozx][pozy] = ikone[smjerovi.index(smjer)]
+                flag = 1
+
+        nacrtajMapu(mapa, "Spusti kutiju")
+        globalni["pozx"] = pozx
+        globalni["pozy"] = pozy
+        globalni["smjer"] = smjer
+        globalni["mapa"] = mapa
+        globalni["kutija"] = kutija
+        return flag
 
 
 def usporedi(l, relacija, d):
@@ -762,46 +803,40 @@ def usporedi(l, relacija, d):
 
 
 class Usporedba(AST('lijevo relacija desno')):
-    def vrijednost(self, mem, unutar):
-        l = self.lijevo.vrijednost(mem, unutar)
-        d = self.desno.vrijednost(mem, unutar)
+    def izvrsi(self, mem, globalni, unutar):
+        l = self.lijevo.izvrsi(mem, globalni, unutar)
+        d = self.desno.izvrsi(mem, globalni, unutar)
         return usporedi(l, self.relacija, d)
 
 
 class Pridruzivanje(AST('ime pridruzeno')):
-    def vrijednost(self, mem, unutar):
-        # TODO: Mislim da svu provjeru tipova vec imamo obavljenu u parseru
-
-        # lijevo = symtab[self.varijabla]
-        # desno = self.vrijednost.provjeri_tip(symtab)
-        # if not desno <= lijevo:
-        #     raise self.varijabla.krivi_tip(lijevo, desno)
-        mem[self.ime] = self.pridruzeno.vrijednost(mem, unutar)
+    def izvrsi(self, mem, globalni, unutar):
+        mem[self.ime] = self.pridruzeno.izvrsi(mem, globalni, unutar)
 
 
 class Azuriranje(AST("ime izraz")):
-    def vrijednost(self, mem, unutar):
-        mem[self.ime] = self.izraz.vrijednost(mem, unutar)
+    def izvrsi(self, mem, globalni, unutar):
+        mem[self.ime] = self.izraz.izvrsi(mem, globalni, unutar)
 
 
 class Lista(AST("argumenti")):
-    def vrijednost(self, mem, unutar):
+    def izvrsi(self, mem, globalni, unutar):
         lista = []
         for arg in self.argumenti:
             if (isinstance(arg, ListaAST)): arg = Lista(arg)
-            lista.append(arg.vrijednost(mem, unutar))
+            lista.append(arg.izvrsi(mem, globalni, unutar))
         return lista
 
 
 class Pretvorba(AST("kojiTip var uTip")):
-    def vrijednost(self, mem, unutar):
+    def izvrsi(self, mem, globalni, unutar):
         kojiTip = self.kojiTip
         var = self.var
         uTip = self.uTip
         # print(kojiTip)
         # print(var)
         # print(uTip)
-        vrijednost = var.vrijednost(mem, unutar)
+        vrijednost = var.izvrsi(mem, globalni, unutar)
         if kojiTip ^ T.LISTTYPE:
             if uTip ^ T.LISTTYPE:
                 return vrijednost
@@ -829,121 +864,119 @@ class Pretvorba(AST("kojiTip var uTip")):
 
 
 class Blok(AST('naredbe')):
-    def vrijednost(self, mem, unutar):
-        for naredba in self.naredbe: naredba.vrijednost(mem, unutar)
+    def izvrsi(self, mem, globalni, unutar):
+        for naredba in self.naredbe: naredba.izvrsi(mem, globalni, unutar)
 
 
 class Vrati(AST('sto')):
-    def vrijednost(self, mem, unutar):
-        raise Povratak(self.sto.vrijednost(mem, unutar))
+    def izvrsi(self, mem, globalni, unutar):
+        raise Povratak(self.sto.izvrsi(mem, globalni, unutar))
 
 
 class Povratak(NelokalnaKontrolaToka): """Signal koji šalje naredba vrati."""
 
 
-proba = P('''\
-    def Number main(){
-        forward(2);
-        return forward(2);
-    }
-''')
-#print(P.tokeniziraj(proba))
-#prikaz(proba)
-izvrsi(proba)
-
-proba = P('def Number main () {Number c = -1; Number d = -2; if (c == -1){ return c-d;} else {return 0;}}')
-#prikaz(proba, 5)
-izvrsi(proba)
-
-
-proba = P('def Number main () {Number c = -1; Number d = -2; if (c == -1){ return c-d;} else {return 0;}}')
-#prikaz(proba, 5)
-izvrsi(proba)
-
-proba = P('def Number main () {Number c = 1; if (c == 1){ return 1;} else {return 2;}}')
-#prikaz(proba, 5)
-izvrsi(proba)
-
-#TODO: u funkciji argumenti rijesiti da se mogu pozivati funkcije s proizvoljnim imenom
-
-
-proba2 = P('''\
-def Number zbroj (Number n, Number m) {return n+m;}
-def Number main () {Number n = 1; Number d = 2; return zbroj(n, d);}
-''')
-#prikaz(proba2)
-izvrsi(proba2)
-
-proba3 = P('''\
-def Number main () {Number m = 1; Number n = 2; return m - n;}
-''')
-
-#prikaz(proba3)
-izvrsi(proba3)
-
-proba4 = P('''\
-def Number zbroj (Number n, Number m) {return n+m;}
-def Number main () {Number n = 1; Number m = 2; return zbroj(n, m);}
-''')
-#prikaz(proba4, 5)
-izvrsi(proba4)
-
-# TODO: Bool i List se ne mogu usporedivati
-
-pretvorba = P('''\
-def Bool f () {Number n = 0; Bool m = (Bool) n; return m;}
-def List g () {List n = [1,2,False,[[],1,2],True];return n;}
-#def Bool main(){List y = g(); List v = [y];Bool x = (Bool) v; return x;}
-def Number main(){List y = g(); List v = y;Number x = (Number) v; return x;}
-#def List main(){List x = (List) 5; return x;}
-#def List main(){List y = g(); return y;}
-
-''')
+# proba = P('''\
+#     def Number main(){
+#         forward(2);
+#         return forward(2);
+#     }
+# ''')
+# prikaz(proba)
+# izvrsi(proba, mapa=mapa, smjerovi=smjerovi, ikone=ikone, kutije=kutije,
+#        kutija=kutija, smjer=smjer, pozx=pozx, pozy=pozy, senzor=senzor)
+#
+#
+# proba1 = P('def Number main () {Number c = -1; Number d = -2; if (c == -1){ return c-d;} else {return 0;}}')
+# prikaz(proba1, 5)
+# izvrsi(proba1)
+#
+#
+# proba2 = P('def Number main () {Number c = -1; Number d = -2; if (c == -1){ return c-d;} else {return 0;}}')
+# prikaz(proba2, 5)
+# izvrsi(proba2)
+#
+# proba3 = P('def Number main () {Number c = 1; if (c == 1){ return 1;} else {return 2;}}')
+# prikaz(proba3, 5)
+# izvrsi(proba3)
+#
+# proba4 = P('''\
+# def Number zbroj (Number n, Number m) {return n+m;}
+# def Number main () {Number n = 1; Number d = 2; return zbroj(n, d);}
+# ''')
+# prikaz(proba4)
+# izvrsi(proba4, mapa=mapa, smjerovi=smjerovi, ikone=ikone, kutije=kutije,
+#        kutija=kutija, smjer=smjer, pozx=pozx, pozy=pozy, senzor=senzor)
+#
+# proba5 = P('''\
+# def Number main () {Number m = 1; Number n = 2; return m - n;}
+# ''')
+#
+# prikaz(proba5)
+# izvrsi(proba5)
+#
+# proba6 = P('''\
+# def Number zbroj (Number n, Number m) {return n+m;}
+# def Number main () {Number n = 1; Number m = 2; return zbroj(n, m);}
+# ''')
+# prikaz(proba6, 5)
+# izvrsi(proba6)
+#
+# pretvorba = P('''\
+# def Bool f () {Number n = 0; Bool m = (Bool) n; return m;}
+# def List g () {List n = [1,2,False,[[],1,2],True];return n;}
+# #def Bool main(){List y = g(); List v = [y];Bool x = (Bool) v; return x;}
+# def Number main(){List y = g(); List v = y;Number x = (Number) v; return x;}
+# #def List main(){List x = (List) 5; return x;}
+# #def List main(){List y = g(); return y;}
+#
+# ''')
 # prikaz(pretvorba)
-izvrsi(pretvorba)
-
-rekurzivna = P('''\
-    def Number fakt(Number n)
-    {
-        if (n == 1){return 1;}
-        elif (n == 0){return 1;}
-        else {
-            Number a = n-1;
-            return (a+1)*fakt(a);
-        }
-    }
-    def Number main(){
-        Number a = 5;
-        #Bool c = (Bool) a;
-        forward(1);
-        return fakt(5);
-        }
-''')
-#prikaz(rekurzivna)
-izvrsi(rekurzivna)
-
-listeOsnovno = P('''\
-    def List main(){
-        List a = [1, True, [2, Unknown]];
-        a = [111];
-        return a;
-        }
-''')
-#prikaz(listeOsnovno)
-izvrsi(listeOsnovno)
-
-
-aritm = P('''\
-    def Number f(){return 4;}
-    def Number main(){
-        Number a = 2;
-        Number b = f() + 3 / 2;
-        Number c = a+a+b;
-        return c;
-        }
-''')
-#prikaz(aritm)
-izvrsi(aritm)
+# izvrsi(pretvorba)
+#
+# rekurzivna = P('''\
+#     def Number fakt(Number n)
+#     {
+#         if (n == 1){return 1;}
+#         elif (n == 0){return 1;}
+#         else {
+#             Number a = n-1;
+#             return (a+1)*fakt(a);
+#         }
+#     }
+#     def Number main(){
+#         Number a = 5;
+#         #Bool c = (Bool) a;
+#         forward(1);
+#         return fakt(5);
+#         }
+# ''')
+# prikaz(rekurzivna)
+# izvrsi(rekurzivna, mapa=mapa, smjerovi=smjerovi, ikone=ikone, kutije=kutije,
+#        kutija=kutija, smjer=smjer, pozx=pozx, pozy=pozy, senzor=senzor)
+#
+# listeOsnovno = P('''\
+#     def List main(){
+#         List a = [1, True, [2, Unknown]];
+#         a = [111];
+#         return a;
+#         }
+# ''')
+# prikaz(listeOsnovno)
+# izvrsi(listeOsnovno)
+#
+#
+# aritm = P('''\
+#     def Number f(){return 4;}
+#     def Number main(){
+#         Number a = 2;
+#         Number b = f() + 3 / 2;
+#         Number c = a+a+b;
+#         return c;
+#         }
+# ''')
+# prikaz(aritm)
+# izvrsi(aritm)
 
 '''
 ### testovi za FORWARD, TURN i CHECK (bez prepreka)
@@ -982,7 +1015,49 @@ izvrsi(aritm)
     def Number main () {pick (); turn (270); pick (); put (); pick (); forward (1);turn (270); pick ();  put (); turn (90); put (); turn (270);pick ();turn (90); put (); turn (90); pick (); put (); turn (270); pick (); put (); turn (180); forward (1); forward (100);return 0;}
 '''
 
-# prikaz(proba3)
+# pomicanje = P('''
+#     def Bool f(){return pick();}
+#     def Bool main () {
+#     if(f()){
+#         return put();
+#     };
+#     }
+# ''')
+#
+# nacrtajMapu(mapa, "Početak", 0)
+#
+# izvrsi(pomicanje, mapa=mapa, smjerovi=smjerovi, ikone=ikone, kutije=kutije,
+#        kutija=kutija, smjer=smjer, pozx=pozx, pozy=pozy, senzor=senzor)
+
+# pomicanje2 = P('''
+#     def Number f(Number x){if(x==1){return 0;}else{forward(1); turn(90); return f(x-1);}}
+#     def Number main () {
+#     return f(5);
+#     }
+# ''')
+#
+# nacrtajMapu(mapa, "Početak", 0)
+#
+# izvrsi(pomicanje2, mapa=mapa, smjerovi=smjerovi, ikone=ikone, kutije=kutije,
+#        kutija=kutija, smjer=smjer, pozx=pozx, pozy=pozy, senzor=senzor)
+
+pomicanje3 = P('''
+    def Number main () {
+    Number i = 0;
+    while(check(1)){
+        i = i +1;
+        forward(1);
+        };
+        return 0;
+        }
+''')
+
+nacrtajMapu(mapa, "Početak", 0)
+
+izvrsi(pomicanje3, mapa=mapa, smjerovi=smjerovi, ikone=ikone, kutije=kutije,
+       kutija=kutija, smjer=smjer, pozx=pozx, pozy=pozy, senzor=senzor)
+
+# prikaz(pomicanje)
 # print ('')
 # print (smjer)
 # izvrsi(proba3)
