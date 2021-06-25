@@ -29,6 +29,20 @@ def nacrtajMapu(mapa, poruka, seconds=1):
     pp.pprint(mapa)
     print()
 
+def updateGlobalni(globalni, pozx, pozy, smjer, mapa, kutija=False):
+    globalni["pozx"] = pozx
+    globalni["pozy"] = pozy
+    globalni["smjer"] = smjer
+    globalni["mapa"] = mapa
+    if kutija:
+        globalni["kutija"] = kutija
+
+def raspakirajGlobalni(globalni, senzor=False, kutije=False):
+    ret = [int(globalni["pozx"]), int(globalni["pozy"]), globalni["smjer"],
+           globalni["mapa"], globalni["smjerovi"]]
+    if senzor: ret.append(globalni["senzor"])
+    if kutije: ret.append(globalni["kutija"]), ret.append(globalni["kutije"])
+    return ret
 
 # Ovo je odnos izmedu Token() i .tip,inace pada
 # Token(T.NESTO) -> NESTO'Nesto'
@@ -615,11 +629,7 @@ class ForPetlja(AST("i stopUsporedba stopVar inkrement blok")):
 
 class Pomak(AST('pomak')):
     def izvrsi(self, mem, globalni, unutar):
-        pozx = int(globalni["pozx"])
-        pozy = int(globalni["pozy"])
-        smjer = globalni["smjer"]
-        mapa = globalni["mapa"]
-        smjerovi = globalni["smjerovi"]
+        [pozx, pozy, smjer, mapa, smjerovi] = raspakirajGlobalni(globalni)
         n = 0
         jeli_ikona = True if mapa[pozx][pozy] in ikone else False
         mapa[pozx][pozy] = '*'
@@ -638,20 +648,13 @@ class Pomak(AST('pomak')):
         else:
             raise GreškaIzvođenja(f'Smjer {smjer} nije valjan.')
         nacrtajMapu(mapa, f"Pomakni se za {self.pomak.sadržaj}")
-        globalni["pozx"] = pozx
-        globalni["pozy"] = pozy
-        globalni["smjer"] = smjer
-        globalni["mapa"] = mapa
+        updateGlobalni(globalni, pozx, pozy, smjer, mapa)
         return n
 
 
 class Okretaj(AST('kut')):
     def izvrsi(self, mem, globalni, unutar):
-        pozx = int(globalni["pozx"])
-        pozy = int(globalni["pozy"])
-        smjer = globalni["smjer"]
-        mapa = globalni["mapa"]
-        smjerovi = globalni["smjerovi"]
+        [pozx, pozy, smjer, mapa, smjerovi] = raspakirajGlobalni(globalni)
         flag = -1
 
         if (self.kut.izvrsi(mem, globalni, unutar) % 90):
@@ -667,10 +670,7 @@ class Okretaj(AST('kut')):
             flag = 1
 
         nacrtajMapu(mapa, f"Okreni se za {self.kut.sadržaj} stupnjeva")
-        globalni["pozx"] = pozx
-        globalni["pozy"] = pozy
-        globalni["smjer"] = smjer
-        globalni["mapa"] = mapa
+        updateGlobalni(globalni, pozx, pozy, smjer, mapa)
         return flag
         # ovde ne triba nista vracat jer ce past na GreskaIzvodenja ako nije visekratnik 90 svakako
 
@@ -680,12 +680,8 @@ class Provjera(AST('udaljenost')):
         if self.udaljenost.izvrsi(mem, globalni, unutar) == 0:
             print("true")
             return 1
-        pozx = int(globalni["pozx"])
-        pozy = int(globalni["pozy"])
-        smjer = globalni["smjer"]
-        mapa = globalni["mapa"]
-        smjerovi = globalni["smjerovi"]
-        senzor = globalni["senzor"]
+        [pozx, pozy, smjer, mapa, smjerovi, senzor] = raspakirajGlobalni(globalni, senzor=True)
+
         # ovdje sam globalno (varijabla senzor) definirao udaljenost do koje njegovi senzori rade
         x, y, n = pozx, pozy, 0
         if smjer in {'gore', 'dolje'}:
@@ -724,14 +720,7 @@ class Provjera(AST('udaljenost')):
 
 class Dizanje(AST('')):
     def izvrsi(self, mem, globalni, unutar):
-        # print(globalni)
-        pozx = int(globalni["pozx"])
-        pozy = int(globalni["pozy"])
-        smjer = globalni["smjer"]
-        mapa = globalni["mapa"]
-        smjerovi = globalni["smjerovi"]
-        kutija = globalni["kutija"]
-        kutije = globalni["kutije"]
+        [pozx, pozy, smjer, mapa, smjerovi, kutija, kutije] = raspakirajGlobalni(globalni, kutije=True)
         flag = -1
 
         if smjer in {'gore', 'dolje'}:
@@ -746,23 +735,13 @@ class Dizanje(AST('')):
                 flag = 1
 
         nacrtajMapu(mapa, "Podigni kutiju")
-        globalni["pozx"] = pozx
-        globalni["pozy"] = pozy
-        globalni["smjer"] = smjer
-        globalni["mapa"] = mapa
-        globalni["kutija"] = kutija
+        updateGlobalni(globalni, pozx, pozy, smjer, mapa, kutija)
         return flag
 
 
 class Spustanje(AST('')):
     def izvrsi(self, mem, globalni, unutar):
-        pozx = int(globalni["pozx"])
-        pozy = int(globalni["pozy"])
-        smjer = globalni["smjer"]
-        mapa = globalni["mapa"]
-        smjerovi = globalni["smjerovi"]
-        kutija = globalni["kutija"]
-        kutije = globalni["kutije"]
+        [pozx, pozy, smjer, mapa, smjerovi, kutija, kutije] = raspakirajGlobalni(globalni, kutije=True)
         flag = -1
 
         if smjer in {'gore', 'dolje'}:
@@ -777,11 +756,7 @@ class Spustanje(AST('')):
                 flag = 1
 
         nacrtajMapu(mapa, "Spusti kutiju")
-        globalni["pozx"] = pozx
-        globalni["pozy"] = pozy
-        globalni["smjer"] = smjer
-        globalni["mapa"] = mapa
-        globalni["kutija"] = kutija
+        updateGlobalni(globalni, pozx, pozy, smjer, mapa, kutija)
         return flag
 
 
