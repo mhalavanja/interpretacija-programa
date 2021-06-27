@@ -1,7 +1,7 @@
 from time import sleep
-import math
 
-test = ['############', '#******₸***#', '#♫♫********#', '#******█***#', '#****₸*****#', '#***█↑*****#', '#*█*******█#', '#***♫***₸**#', '#**█****₸**#', '#*█***₸***█#', '############']
+test = ['############', '#******₸***#', '#♫♫********#', '#******█***#', '#****₸*****#', '#***█↑*****#', '#*█*******█#',
+        '#***♫***₸**#', '#**█****₸**#', '#*█***₸***█#', '############']
 
 mapa = res = [list(sub) for sub in test]
 smjerovi = ['gore', 'lijevo', 'dolje', 'desno']
@@ -43,7 +43,8 @@ def raspakirajGlobalni(globalni):
            globalni["mapa"], globalni["smjerovi"]]
     ret.append(globalni["senzor"])
 
-    ret.append(globalni["kutija"]), ret.append(globalni["kutije"]), ret.append(globalni["ikone"]), ret.append(globalni["kvar"]), ret.append(globalni["zvuk"])
+    ret.append(globalni["kutija"]), ret.append(globalni["kutije"]), ret.append(globalni["ikone"]), ret.append(
+        globalni["kvar"]), ret.append(globalni["zvuk"])
     return ret
 
 
@@ -60,7 +61,7 @@ class T(TipoviTokena):
     FORWARD, CHECK, TURN, PUT, PICK, REPAIR, ISWALL, ISBOX, ISSHORT = "forward", "check", "turn", "put", "pick", "repair", "iswall", "isbox", "isshort"
     NOISE = "noise"
     GETX, GETY = "getx", "gety"
-#TODO: dodat getx i gety u gramatiku
+
     class NAME(Token):
         def izvrsi(self, mem, globalni, unutar): return mem[self]
 
@@ -84,6 +85,7 @@ class T(TipoviTokena):
 
     class BREAK(Token):
         literal = 'break'
+
         def izvrsi(self, mem, globalni, unutar): raise Prekid
 
     # Number forward(Number cm) ide u naprijed za cm centimetara
@@ -163,11 +165,13 @@ def lexer(lex):
 #              | WHILE OPEN logStart CLOSE blok
 #              | FOR OPEN name# SEMICOL name# usporedba aritm SEMICOL name# (PP | PE aritm) CLOSE blok
 
-# TODO: dodat noise i getx i gety TO SU SVE aritmNaredbe
 # boolNaredbe -> okreni | provjeri | podigni | spusti | popravi | provjeriZid | provjeriKutiju | provjeriKvar
-# aritmNaredbe -> naprijed | buka
+# aritmNaredbe -> naprijed | buka | dohvatix | dohvatiy
+
 # naprijed -> FORWARD OPEN aritm CLOSE
 # buka -> NOISE OPEN CLOSE
+# dohvatix -> GETX OPEN CLOSE
+# dohvatiy -> GETY OPEN CLOSE
 
 # okreni -> TURN OPEN aritm CLOSE
 # provjeri -> CHECK OPEN aritm CLOSE
@@ -185,12 +189,12 @@ def lexer(lex):
 #          OPEN BOOLTYPE CLOSE (NAME poziv? | aritmNaredbe | boolNaredbe) -- eksplicitne pretvorbe
 # usporedba -> NE | LE | GE | EE | LT | GT
 
-# list -> OLIST (listArgument | list)? CLIST | NAME poziv? (OLIST aritm CLIST)? #TODO: ne znamo radi li | OPEN LISTTYPE CLOSE (NAME poziv? | aritmNaredbe | boolNaredbe)--
+# list -> OLIST (listArgument | list)? CLIST | NAME poziv? | NAME (OLIST aritm CLIST)? | OPEN LISTTYPE CLOSE (NAME poziv? | aritmNaredbe | boolNaredbe)--
+# listArgument -> list | NUM | TRUE | FALSE | UNKNOWN
 
 # poziv -> OPEN argumenti? CLOSE
 # argumenti -> argument | argument COMMA argumenti
-# argument -> aritm |! logStart |! list  [KONTEKST!] kod poziva funkcija
-# listArgument -> list | NUM | TRUE | FALSE | UNKNOWN
+# argument -> aritm | logStart | list | boolNaredba | aritmNaredba
 # type -> NUMBERTYPE, BOOLTYPE, LISTTYPE
 
 # aritm -> aritm PLUS član | aritm MINUS član | član
@@ -205,11 +209,12 @@ operatoriUsporedbe = {T.EE, T.NE, T.LE, T.LT, T.GE, T.GT}
 class P(Parser):
     def program(self):  # deklaracije drugih funkcija mora prethoditi deklaraciji maina
         self.funkcije = Memorija(redefinicija=False)
-        try:    
+        try:
             while self > T.DEF:  # deklaracija funkcija pocinje s def
                 funkcija = self.funkcija()
                 self.funkcije[funkcija.ime] = funkcija
-        except Prekid: raise SemantičkaGreška('nedozvoljen break izvan petlje')
+        except Prekid:
+            raise SemantičkaGreška('nedozvoljen break izvan petlje')
         return self.funkcije
 
     def funkcija(self):
@@ -219,7 +224,7 @@ class P(Parser):
         # povratni tip, ime, parametri trenutne funkcije
         [self.tipf, self.imef], self.parametrif = self.tipIme(), self.parametri()
         blok = self.blok()
-        return Funkcija(self.tipf, self.imef, self.parametrif, blok, self.symtab)
+        return Funkcija(self.tipf, self.imef, self.parametrif, blok)
 
     def tipIme(self):
         return self >> {T.NUMBERTYPE, T.BOOLTYPE, T.LISTTYPE}, self >> T.NAME
@@ -264,7 +269,7 @@ class P(Parser):
         elif self >= T.ADD:
             return self.dodajElement(False)
         elif self >= T.RETURN:
-            return Vrati(self.tipa(self.tipf), self.tipf)
+            return Vrati(self.tipa(self.tipf))
         elif self >= T.FORWARD:
             return self.naprijed()
         elif self >= T.NOISE:
@@ -348,15 +353,14 @@ class P(Parser):
         ifUvjet = self.logStart()
         self >> T.CLOSE
         ifNaredbe = self.blok()
-        # TODO: Za sad imamo samo jedan elif
         while self >= T.ELIF:
             self >> T.OPEN
             elifUvjet = self.logStart()
-            elifUvjeti.append (elifUvjet)
+            elifUvjeti.append(elifUvjet)
             self >> T.CLOSE
             elifNaredbe = self.blok()
-            elifBlokovi.append (elifNaredbe)
-        duljinaElif = elifUvjeti.__sizeof__ ()
+            elifBlokovi.append(elifNaredbe)
+        duljinaElif = elifUvjeti.__sizeof__()
         if self >= T.ELSE: elseNaredbe = self.blok()
         return Grananje(ifUvjet, ifNaredbe, elifUvjeti, elifBlokovi, elseNaredbe)
 
@@ -487,7 +491,6 @@ class P(Parser):
             varijabla = self.mozda_poziv(ime, tip, True)
         return Pretvorba(Token(tip), varijabla, Token(uTip))
 
-    # TODO: Do ovog dijela se gramatika poklapa
     def logIzraz(self):
         if log := self >= {T.TRUE, T.FALSE, T.UNKNOWN}:
             return log
@@ -528,7 +531,8 @@ class P(Parser):
                     f"Tip varijable {ime} je tipa {self.symtab[ime].tip} nije očekivanog tipa {ocekivaniTip}")
             else:
                 return ime
-        elif ime.tip in {T.FORWARD, T.NOISE, T.GETX, T.GETY, T.TURN, T.CHECK, T.PICK, T.PUT, T.REPAIR, T.ISWALL, T.ISBOX, T.ISSHORT}:
+        elif ime.tip in {T.FORWARD, T.NOISE, T.GETX, T.GETY, T.TURN, T.CHECK, T.PICK, T.PUT, T.REPAIR, T.ISWALL,
+                         T.ISBOX, T.ISSHORT}:
             self.vrati()
             return self.naredba()
         elif force:
@@ -586,32 +590,32 @@ class P(Parser):
         self >> T.CLIST
         return PristupListi(name, index, self.listMem[name], Token(tip))
 
-    # TODO: za svaki moguci nacin inicijalizacije liste treba se pobrinuti da znamo tipoviArgumenata
     def list(self, tipoviArgumenata=None):
         if tipoviArgumenata is None:
             tipoviArgumenata = []
         if self >= T.OPEN:  # pretvorba nekog elementa u listu
-            if self >> T.LISTTYPE:
-                pretvorba = self.pretvorba(T.LISTTYPE)
-                tip = pretvorba.kojiTip
-                if tip ^ T.LISTTYPE:
-                    tipoviArgumenata = self.listMem[pretvorba.varName]
-                else:
-                    tipoviArgumenata.append(tip)
-                self.listMem[self.imeListe] = tipoviArgumenata
-                return pretvorba
+            self >> T.LISTTYPE
+            pretvorba = self.pretvorba(T.LISTTYPE)
+            tip = pretvorba.kojiTip
+            if tip ^ T.LISTTYPE:
+                tipoviArgumenata = self.listMem[pretvorba.varName]
+            else:
+                tipoviArgumenata.append(tip)
+            self.listMem[self.imeListe] = tipoviArgumenata
+            return pretvorba
         elif name := self >= T.NAME:
             if self > T.OLIST:  # dohvat elementa iz liste
                 self.listMem[self.imeListe] = self.listMem[name]
                 return self.pristupListi(name, T.LISTTYPE)
-            else:  # poziv funkcije ili varijable
+            else:  # poziv funkcije ili varijable,
                 mozda = self.mozda_poziv(name, T.LISTTYPE)
+                # ovi slucajevi bi se potencijalno drugacije obradili u buducnosti pa je ovako ostavljeno za sad
                 if name == self.imef:
-                    self.listMem[self.imeListe] = tipoviArgumenata
+                    self.listMem[self.imeListe] = []
                 elif name in self.funkcije:
-                    self.listMem[self.imeListe] = tipoviArgumenata
+                    self.listMem[self.imeListe] = []
                 elif name in self.symtab:
-                    self.listMem[self.imeListe] = tipoviArgumenata
+                    self.listMem[self.imeListe] = []
                 return mozda
         else:
             self >> T.OLIST
@@ -643,27 +647,15 @@ def izvrsi(funkcije, *argumenti, **globalni):
     print('Main je vratio:', funkcije['main'].pozovi(argumenti, Memorija(globalni)))
 
 
-# def numBoolToToken(num):
-#     if num == -1:
-#         return T.FALSE
-#     elif num == 0:
-#         return T.UNKNOWN
-#     elif num == 1:
-#         return T.TRUE
-#     else:
-#         assert False, f"{num} nije izvrsi nikoje instance Bool tipa"
-
-
 ### AST
-# Program: funkcije[funkcija] #(za sad nema ovog: naredbe:[naredba])
-# Funkcija: tip:TYPE ime:IME parametri:[[tip:TYPE ime:IME]] naredbe:[naredba]
-# naredba: Grananje: istinitost:JE|NIJE uvjeti:[log] onda:[naredba] inače:naredba
-#          ForPetlja: varijabla:"" stopUvjet:log inkrement:NUM naredbe:[naredba]
-#          WhilePetlja: uvjet:log naredbe:[naredba]
-#          Pridruzivanje: tip:TYPE ime:NAME pridruženo:izraz
-#          Azuriranje: tip:TYPE ime:NAME pridruženo:izraz
-#          Pretvorba: kojiTip:TYPE var:NAME uTip:TYPE
-#          Vrati: tip:TYPE što:izraz
+# Funkcija: povratniTip:tip ime:IME parametri:[(tip:TYPE ime:IME)] blok:Blok #parametri je lista tuplova
+# naredba: Grananje: ifUvjet:[log] ifNaredbe:Blok elifUvjeti:[[log]] elifBlokovi:[Blok] elseNaredbe:Blok
+#          ForPetlja: i:varijabla stopUsporedba:znakUsporedbe stopVar:aritm inkrement:aritm blok:Blok
+#          WhilePetlja: logUvjet:log blok:Blok
+#          Pridruzivanje: tip:tip ime:NAME pridruzeno:izraz
+#          Azuriranje: ime:NAME izraz:izraz
+#          Pretvorba: kojiTip:tip varName:NAME uTip:TYPE
+#          Vrati: tip:tip sto:izraz
 #          Pomak: pomak:NUM
 #          RazinaBuke:
 #          Okretaj: kut:NUM
@@ -676,15 +668,26 @@ def izvrsi(funkcije, *argumenti, **globalni):
 #          ProvjeraKvara:
 #          X:
 #          Y:
-#TODO: dodat noise, getx, gety (nemaju argumenata)
-# izraz: Usporedba: lijevo:aritm relacija:EE|NE|LT|LE|GT|GE desno:aritm
-#        NUM: Token
-#        NAME: Token
-#        Binarna: op:(aritm:PLUS|MINUS|TIMES|DIV|EXP)|(log:OR|AND) lijevo:izraz desno:izraz
-#        Unarna: op:(aritm:MINUS)|(log:NOT) ispod:izraz
+# Blok: [naredba]
+# elifUvijeti: [elifUvijet:[log]]
+# elifBlokovi: [elifBlok:blok]
+# Poziv: funkcija:Funkcija argumenti:[izraz]
+# znakUsporedbe: LT | GT | LE | GE | NE | EE
+# izraz: log: Usporedba: lijevo:aritm relacija:znakUsporedbe desno:aritm
+#             Binarna: op:OR|AND lijevo:izraz desno:izraz
+#             Unarna: op:NOT ispod:izraz
+#        aritm: Binarna: op:PLUS|MINUS|TIMES|DIV|EXP lijevo:izraz desno:izraz
+#               Unarna: op:MINUS ispod:izraz
+#        list: Lista: argumenti:[izraz]
+#              DodajListi: name:NAME var:NAME|Poziv kraj:True|False
+#
+#        mogu vracati (biti) log, aritm, ili list
+#
 #        Poziv: funkcija:Funkcija argumenti:[izraz]
-
-class Funkcija(AST('povratniTip ime parametri blok symtab')):
+#        PristupListi: name:NAME index:aritm tipoviUListi:[tip] ocekivaniTip:tip
+#        Pretvorba: kojiTip:tip varName:NAME uTip:tip
+# tip: NUMBERTYPE | BOOLTYPE | LISTTYPE
+class Funkcija(AST('povratniTip ime parametri blok')):
     def pozovi(self, argumenti, globalni):
         parametriImena = []
         for tip, ime in self.parametri:
@@ -760,9 +763,9 @@ class Grananje(
             return
         for uvjet, naredba in zip(self.elifUvjeti, self.elifBlokovi):
             if uvjet and uvjet.izvrsi(mem, globalni, unutar) == 1:
-               naredba.izvrsi(mem, globalni, unutar)
-               return
-        
+                naredba.izvrsi(mem, globalni, unutar)
+                return
+
         self.elseNaredbe.izvrsi(mem, globalni, unutar)
 
 
@@ -771,7 +774,9 @@ class WhilePetlja(AST("logUvjet blok")):
         while self.logUvjet.izvrsi(mem, globalni, unutar) == 1:
             try:
                 self.blok.izvrsi(mem, globalni, unutar)
-            except Prekid: break
+            except Prekid:
+                break
+
 
 class ForPetlja(AST("i stopUsporedba stopVar inkrement blok")):
     def izvrsi(self, mem, globalni, unutar):
@@ -780,8 +785,9 @@ class ForPetlja(AST("i stopUsporedba stopVar inkrement blok")):
         while (usporedi(i, self.stopUsporedba, stopVar)):
             try:
                 self.blok.izvrsi(mem, globalni, unutar)
-            except Prekid: break
-            if isinstance (self.inkrement, int):
+            except Prekid:
+                break
+            if isinstance(self.inkrement, int):
                 i += self.inkrement
             else:
                 i += self.inkrement.izvrsi(mem, globalni, unutar)
@@ -811,28 +817,34 @@ class Pomak(AST('pomak')):
         updateGlobalni(globalni, pozx, pozy, smjer, mapa)
         return n
 
+
 class RazinaBuke(AST('')):
     def izvrsi(self, mem, globalni, unutar):
         [pozx, pozy, smjer, mapa, smjerovi, senzor, kutija, kutije, ikone, kvar, zvuk] = raspakirajGlobalni(globalni)
         razina = 100
         euklid_min = 1000
-        for i in range (max (0, pozx - math.floor ((senzor + 1) / 2)), min (pozx + math.floor ((senzor + 1) / 2), len (mapa) - 2) + 1, 1):
-            for j in range (max (0, pozy - math.floor ((senzor + 1) / 2)), min (pozy + math.floor ((senzor + 1) / 2), len (mapa[0]) - 2) + 1, 1):
-                if (mapa[i][j] == zvuk):                    
-                    euklid = math.sqrt ((pozx - i)**2 + (pozy - j)**2)
+        for i in range(max(0, pozx - math.floor((senzor + 1) / 2)),
+                       min(pozx + math.floor((senzor + 1) / 2), len(mapa) - 2) + 1, 1):
+            for j in range(max(0, pozy - math.floor((senzor + 1) / 2)),
+                           min(pozy + math.floor((senzor + 1) / 2), len(mapa[0]) - 2) + 1, 1):
+                if (mapa[i][j] == zvuk):
+                    euklid = math.sqrt((pozx - i) ** 2 + (pozy - j) ** 2)
                     if (euklid < euklid_min):
                         euklid_min = euklid
-        return ((int) (razina / euklid_min))
+        return ((int)(razina / euklid_min))
+
 
 class X(AST('')):
     def izvrsi(self, mem, globalni, unutar):
         [pozx, pozy, smjer, mapa, smjerovi, senzor, kutija, kutije, ikone, kvar, zvuk] = raspakirajGlobalni(globalni)
         return pozx
 
+
 class Y(AST('')):
     def izvrsi(self, mem, globalni, unutar):
         [pozx, pozy, smjer, mapa, smjerovi, senzor, kutija, kutije, ikone, kvar, zvuk] = raspakirajGlobalni(globalni)
         return pozy
+
 
 class Okretaj(AST('kut')):
     def izvrsi(self, mem, globalni, unutar):
@@ -1087,7 +1099,7 @@ class PristupListi(AST("name index tipoviUListi ocekivaniTip")):
         index = self.index.izvrsi(mem, globalni, unutar)
         lista = mem[self.name]
         tipovi = self.tipoviUListi
-        if tipovi and not Token(tipovi[index]) ^ self.ocekivaniTip.tip:
+        if isinstance(tipovi, list) and not tipovi[index] ^ self.ocekivaniTip.tip:
             raise GreškaIzvođenja(f"Tip varijable na mjestu {index} liste {self.name.sadržaj} nije {self.ocekivaniTip}")
         if index > len(lista) or index < 0: raise GreškaIzvođenja(
             "Index liste mora biti pozitivan broj manji od duljine liste")
@@ -1131,7 +1143,7 @@ class Blok(AST('naredbe')):
         for naredba in self.naredbe: naredba.izvrsi(mem, globalni, unutar)
 
 
-class Vrati(AST("sto ocekivaniTip")):
+class Vrati(AST("sto")):
     def izvrsi(self, mem, globalni, unutar):
         sto = self.sto.izvrsi(mem, globalni, unutar)
         raise Povratak(sto)
@@ -1140,13 +1152,23 @@ class Vrati(AST("sto ocekivaniTip")):
 class Povratak(NelokalnaKontrolaToka): """Signal koji šalje naredba vrati."""
 
 
-
-proba = P ('''
+proba = P('''
+    def List f(Number a, Number b){
+            List c = [a];
+            add(c, b);
+            return c;
+        }
+        
     def Number main () { 
-        return 0;
+        List x = f(2, 2);
+        Number d = 3;
+        append(x, d);
+        Number c = x[0] + x[1] + x[2];
+        return c;
     }
 ''')
 
+prikaz(proba)
+
 izvrsi(proba, mapa=mapa, smjerovi=smjerovi, ikone=ikone, kutije=kutije,
        kutija=kutija, smjer=smjer, pozx=pozx, pozy=pozy, senzor=senzor, kvar=kvar, zvuk=zvuk)
-
